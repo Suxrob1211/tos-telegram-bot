@@ -130,7 +130,11 @@ def build_message(ticker: str, scanner_name: str) -> str:
 
 def finviz_chart_url(ticker: str) -> str:
     """Finviz kunlik grafik URL."""
-    return f"https://finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l"
+    return (
+        f"https://finviz.com/chart.ashx?"
+        f"t={ticker}&ty=c&ta=1&p=d&s=l"
+        f"&cache={int(time.time())}"
+    )
 
 # ── Email o'qish ──────────────────────────────────────────────────────────────
 def extract_tickers_and_scanner(subject: str, body: str):
