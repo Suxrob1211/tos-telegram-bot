@@ -202,6 +202,14 @@ def check_email():
                 body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
 
             print(f"[Email] Subject: {subject}")
+
+            # Faqat "New symbol" yoki "New symbols" emaillarini yuborish
+            import re as _re
+            if not _re.search(r"New symbols?\s*:", subject, _re.IGNORECASE):
+                print(f"[Skip] Following list email otkazib yuborildi")
+                ALREADY_SENT.add(msg_id)
+                continue
+
             print(f"[Email] Body preview: {body[:120]}")
 
             tickers, scanner_name = extract_tickers_and_scanner(subject, body)
