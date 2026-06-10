@@ -4,7 +4,7 @@ alerts@thinkorswim.com emaillarini o'qib, Finviz grafik + Yahoo Finance ma'lumot
 bilan Telegram kanaliga yuboradi.
 
 O'rnatish:
-    pip install gmail-python yagmail requests yfinance python-dotenv
+    pip install requests yfinance python-dotenv
 
 Muhit o'zgaruvchilari (.env fayl):
     GMAIL_USER=sizning@gmail.com
@@ -26,38 +26,73 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Sozlamalar ──────────────────────────────────────────────────────────────
-GMAIL_USER        = os.getenv("GMAIL_USER")
-GMAIL_APP_PASS    = os.getenv("GMAIL_APP_PASSWORD")
-TELEGRAM_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID")
+GMAIL_USER       = os.getenv("GMAIL_USER")
+GMAIL_APP_PASS   = os.getenv("GMAIL_APP_PASSWORD")
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-TOS_SENDER        = "alerts@thinkorswim.com"
-CHECK_INTERVAL    = 60          # sekundda bir tekshiradi
-ALREADY_SENT      = set()       # takroriy yuborishni oldini olish
+TOS_SENDER       = "alerts@thinkorswim.com"
+CHECK_INTERVAL   = 60          # sekundda bir tekshiradi
+
+# FIX #3: ALREADY_SENT faylga saqlanadi — bot qayta ishga tushsa ham eslab qoladi
+SENT_IDS_FILE    = "sent_ids.txt"
+
+def load_sent_ids() -> set:
+    if not os.path.exists(SENT_IDS_FILE):
+        return set()
+    with open(SENT_IDS_FILE, "r") as f:
+        return set(line.strip() for line in f if line.strip())
+
+def save_sent_id(msg_id: str):
+    with open(SENT_IDS_FILE, "a") as f:
+        f.write(msg_id + "\n")
+
+ALREADY_SENT = load_sent_ids()
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
-def send_telegram_photo(caption: str, image_url: str):
-    """Finviz grafik + matnni Telegramga yuboradi."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+# FIX #2: Finviz hotlink himoyasi tufayli sendPhoto ishlamaydi.
+# Grafik rasmini avval yuklab, keyin sendPhoto (file sifatida) yuboramiz.
+def send_telegram_photo(caption: str, ticker: str):
+    """Finviz grafikini yuklab, Telegramga fayl sifatida yuboradi."""
+    chart_url = (
+        f"https://finviz.com/chart.ashx?"
+        f"t={ticker}&ty=c&ta=1&p=d&s=l"
+        f"&cache={int(time.time())}"
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://finviz.com/",
+    }
+    try:
+        img_resp = requests.get(chart_url, headers=headers, timeout=15)
+        img_resp.raise_for_status()
+
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+        files = {"photo": (f"{ticker}.png", img_resp.content, "image/png")}
+        data  = {
+            "chat_id":    TELEGRAM_CHAT_ID,
+            "caption":    caption,
+            "parse_mode": "HTML",
+        }
+        resp = requests.post(url, data=data, files=files, timeout=20)
+        if not resp.ok:
+            print(f"[Telegram xato] {resp.text}")
+            send_telegram_text(caption)   # grafik chiqmasa matn yuboradi
+    except Exception as e:
+        print(f"[Grafik xato] {ticker}: {e}")
+        send_telegram_text(caption)
+
+def send_telegram_text(text: str):
+    """Faqat matn yuboradi."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "photo": image_url,
-        "caption": caption,
+        "chat_id":    TELEGRAM_CHAT_ID,
+        "text":       text,
         "parse_mode": "HTML",
     }
     resp = requests.post(url, json=payload, timeout=15)
     if not resp.ok:
-        print(f"[Telegram xato] {resp.text}")
-
-def send_telegram_text(text: str):
-    """Faqat matn yuboradi (grafik yuklanmasa)."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-    }
-    requests.post(url, json=payload, timeout=15)
+        print(f"[Telegram matn xato] {resp.text}")
 
 # ── Yahoo Finance ma'lumotlari ───────────────────────────────────────────────
 def get_stock_info(ticker: str) -> dict:
@@ -65,17 +100,22 @@ def get_stock_info(ticker: str) -> dict:
     try:
         stock = yf.Ticker(ticker)
         info  = stock.info
-        hist  = stock.history(period="2d")
 
-        price      = info.get("currentPrice") or info.get("regularMarketPrice", 0)
-        prev_close = info.get("previousClose", 0)
+        # FIX #5: price None bo'lmasligi uchun bir nechta fallback
+        price = (
+            info.get("currentPrice")
+            or info.get("regularMarketPrice")
+            or info.get("navPrice")
+            or 0
+        )
+        prev_close = info.get("previousClose") or info.get("regularMarketPreviousClose") or 0
         change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0
-        volume     = info.get("volume") or info.get("regularMarketVolume", 0)
-        avg_vol    = info.get("averageVolume", 0)
+        volume     = info.get("volume") or info.get("regularMarketVolume") or 0
+        avg_vol    = info.get("averageVolume") or 0
         rvol       = round(volume / avg_vol, 2) if avg_vol else 0
-        market_cap = info.get("marketCap", 0)
-        sector     = info.get("sector", "N/A")
-        company    = info.get("longName") or info.get("shortName", ticker)
+        market_cap = info.get("marketCap") or 0
+        sector     = info.get("sector") or "N/A"
+        company    = info.get("longName") or info.get("shortName") or ticker
 
         return {
             "company":    company,
@@ -113,9 +153,10 @@ def build_message(ticker: str, scanner_name: str) -> str:
     vol_str = format_number(d["volume"])
     avg_str = format_number(d["avg_volume"])
 
+    # FIX #6: <code>abc</code> test qoldig'i olib tashlandi
     msg = (
         f"🧠 <b>Algorithm:</b> {scanner_name}\n"
-        f'<code>abc</code> <b>Ticker:</b> {ticker}\n'
+        f"📌 <b>Ticker:</b> {ticker}\n"
         f"🏢 <b>Company:</b> {d['company']}\n"
         f"🏭 <b>Sector:</b> {d['sector']}\n"
         f"💰 <b>Price:</b> ${d['price']:.4f}\n"
@@ -128,25 +169,17 @@ def build_message(ticker: str, scanner_name: str) -> str:
     )
     return msg
 
-def finviz_chart_url(ticker: str) -> str:
-    """Finviz kunlik grafik URL."""
-    return (
-        f"https://finviz.com/chart.ashx?"
-        f"t={ticker}&ty=c&ta=1&p=d&s=l"
-        f"&cache={int(time.time())}"
-    )
-
 # ── Email o'qish ──────────────────────────────────────────────────────────────
 def extract_tickers_and_scanner(subject: str, body: str):
     """
     Emaildan ticker(lar) va scanner nomini ajratib oladi.
     Formatlar:
-      'Alert: New symbol: CRWD was added to trend + breakout + volume oldin.'
+      'Alert: New symbol: CRWD was added to trend + breakout + volume'
       'Alert: New symbols: COP, CVX, MGY were added to pullback.'
     """
-    text = subject  # Subject ancha toza va ishonchli
+    text = subject
 
-    # Scanner nomi: "added to SCANNER_NAME" — ikki nuqta yoki "oldin" dan oldin to'xtaydi
+    # Scanner nomi
     scanner_match = re.search(r"added to ([^:]+?)(?:\s*:|\.\s*$|\s+oldin\b)", text, re.IGNORECASE)
     if scanner_match:
         scanner_name = scanner_match.group(1).strip()
@@ -178,8 +211,9 @@ def check_email():
         mail.login(GMAIL_USER, GMAIL_APP_PASS)
         mail.select("inbox")
 
-        # So'nggi 10 daqiqadagi o'qilmagan emaillar
-        since = (datetime.now() - timedelta(minutes=10)).strftime("%d-%b-%Y")
+        # FIX #4: IMAP SINCE faqat sana qabul qiladi, vaqt emas.
+        # Bugungi emaillarni olamiz, Message-ID orqali takrorni oldini olamiz.
+        since = datetime.now().strftime("%d-%b-%Y")
         _, data = mail.search(None, f'(UNSEEN FROM "{TOS_SENDER}" SINCE "{since}")')
 
         ids = data[0].split()
@@ -207,11 +241,11 @@ def check_email():
 
             print(f"[Email] Subject: {subject}")
 
-            # Faqat "New symbol" yoki "New symbols" emaillarini yuborish
-            import re as _re
-            if not _re.search(r"New symbols?\s*:", subject, _re.IGNORECASE):
-                print(f"[Skip] Following list email otkazib yuborildi")
+            # FIX #1: takroriy `import re` olib tashlandi — yuqorida bir marta import qilingan
+            if not re.search(r"New symbols?\s*:", subject, re.IGNORECASE):
+                print("[Skip] Following list email otkazib yuborildi")
                 ALREADY_SENT.add(msg_id)
+                save_sent_id(msg_id)
                 continue
 
             print(f"[Email] Body preview: {body[:120]}")
@@ -220,13 +254,13 @@ def check_email():
             print(f"[Email] Tickers: {tickers}, Scanner: {scanner_name}")
 
             for ticker in tickers:
-                caption   = build_message(ticker, scanner_name)
-                chart_url = finviz_chart_url(ticker)
-                send_telegram_photo(caption, chart_url)
+                caption = build_message(ticker, scanner_name)
+                send_telegram_photo(caption, ticker)
                 print(f"[Telegram] {ticker} yuborildi ✅")
                 time.sleep(1)   # flood limit
 
             ALREADY_SENT.add(msg_id)
+            save_sent_id(msg_id)
 
         mail.logout()
 
