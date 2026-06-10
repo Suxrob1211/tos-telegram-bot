@@ -53,31 +53,39 @@ ALREADY_SENT = load_sent_ids()
 # FIX #2: Finviz hotlink himoyasi tufayli sendPhoto ishlamaydi.
 # Grafik rasmini avval yuklab, keyin sendPhoto (file sifatida) yuboramiz.
 def send_telegram_photo(caption: str, ticker: str):
-    """Finviz grafikini yuklab, Telegramga fayl sifatida yuboradi."""
-    chart_url = (
-        f"https://finviz.com/chart.ashx?"
-        f"t={ticker}&ty=c&ta=1&p=d&s=l"
-        f"&cache={int(time.time())}"
-    )
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://finviz.com/",
-    }
+    """TradingView grafik URL ni inline photo sifatida yuboradi."""
+    # TradingView mini grafik (ochiq, hotlink himoyasi yo'q)
+    chart_url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l"
+
+    # Avval URL bilan sendPhoto sinab ko'ramiz
     try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+        payload = {
+            "chat_id":    TELEGRAM_CHAT_ID,
+            "photo":      chart_url,
+            "caption":    caption,
+            "parse_mode": "HTML",
+        }
+        resp = requests.post(url, json=payload, timeout=15)
+        if resp.ok:
+            return
+        print(f"[URL usuli ishlamadi] {resp.text}")
+    except Exception as e:
+        print(f"[URL usuli xato] {e}")
+
+    # Ishlamasa — rasmni yuklab fayl sifatida yuboramiz
+    try:
+        headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://finviz.com/"}
         img_resp = requests.get(chart_url, headers=headers, timeout=15)
         img_resp.raise_for_status()
 
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
         files = {"photo": (f"{ticker}.png", img_resp.content, "image/png")}
-        data  = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "caption":    caption,
-            "parse_mode": "HTML",
-        }
+        data  = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"}
         resp = requests.post(url, data=data, files=files, timeout=20)
         if not resp.ok:
-            print(f"[Telegram xato] {resp.text}")
-            send_telegram_text(caption)   # grafik chiqmasa matn yuboradi
+            print(f"[Fayl usuli xato] {resp.text}")
+            send_telegram_text(caption)
     except Exception as e:
         print(f"[Grafik xato] {ticker}: {e}")
         send_telegram_text(caption)
