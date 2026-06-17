@@ -22,7 +22,7 @@ TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 TOS_SENDER       = "alerts@thinkorswim.com"
-CHECK_INTERVAL   = 15
+CHECK_INTERVAL   = 30
 MIN_RVOL         = 1.0
 RSI_MIN          = 30
 RSI_MAX          = 80
@@ -276,6 +276,7 @@ def extract_tickers_and_scanner(subject: str, body: str):
 
 # ── Email tekshirish ──────────────────────────────────────────────────────────
 def check_email():
+    mail = None
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(GMAIL_USER, GMAIL_APP_PASS)
@@ -324,9 +325,14 @@ def check_email():
             ALREADY_SENT.add(msg_id)
             save_sent_id(msg_id)
 
-        mail.logout()
     except Exception as e:
         print(f"[Xato] {e}")
+    finally:
+        try:
+            if mail:
+                mail.logout()
+        except Exception:
+            pass
 
 # ── Asosiy tsikl ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
