@@ -256,32 +256,26 @@ def send_telegram_text(text: str):
 # ── Email parsing ─────────────────────────────────────────────────────────────
 def extract_tickers_and_scanner(subject: str, body: str):
 
-    text = subject
+    text = subject.strip()
 
-    m = re.search(
-        r"added to ([^:]+?)(?:\s*:|\.\s*$|\s+oldin\b)",
+    scanner_name = "TOS Scanner"
+
+    # Alert: New symbol: INSP was added to Trend line .
+    # Alert: New symbol: AIT was added to trend + breakout + volume oldin.
+    # Alert: New symbols: COP, CVX were added to pullback.
+
+    scanner_match = re.search(
+        r"(?:was|were)\s+added\s+to\s+(.+?)(?:\.|$|oldin)",
         text,
         re.IGNORECASE
     )
 
-    if m:
-        scanner_name = m.group(1).strip()
-    else:
-        m_alt = re.search(
-            r"added to (.+?)(?:\.|$)",
-            text,
-            re.IGNORECASE
-        )
-
-        scanner_name = (
-            m_alt.group(1).strip()
-            if m_alt
-            else "TOS Scanner"
-        )
+    if scanner_match:
+        scanner_name = scanner_match.group(1).strip()
 
     tickers = []
 
-    # Alert: New symbol: INSP was added to Trend line
+    # Single ticker
     m_single = re.search(
         r"New symbol:\s*([A-Z]{1,5})",
         text,
@@ -291,7 +285,7 @@ def extract_tickers_and_scanner(subject: str, body: str):
     if m_single:
         tickers = [m_single.group(1).upper()]
 
-    # Alert: New symbols: COP, CVX, MGY were added...
+    # Multiple tickers
     if not tickers:
 
         m_multi = re.search(
