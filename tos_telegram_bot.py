@@ -88,7 +88,7 @@ try:
             print(f"[Screenshot] {ticker} OK")
             return screenshot
 
-            except Exception as e:
+        except Exception as e:
             print(f"[Screenshot xato] {ticker}: {e}")
             return None
 
