@@ -326,8 +326,6 @@ def check_email():
 
             if not re.search(r"New symbols?\s*:", subject, re.IGNORECASE):
                 print("[Skip] Following list email otkazib yuborildi")
-                ALREADY_SENT.add(msg_id)
-                save_sent_id(msg_id)
                 continue
 
             tickers, scanner_name = extract_tickers_and_scanner(subject, body)
