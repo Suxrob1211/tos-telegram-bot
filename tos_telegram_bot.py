@@ -41,40 +41,57 @@ def save_sent_id(msg_id: str):
 ALREADY_SENT = load_sent_ids()
 
 # ── Playwright bilan real-time screenshot ────────────────────────────────────
-def get_finviz_screenshot(ticker: str) -> bytes | None:
-    """
-    Playwright orqali Finviz sahifasidan real-time grafik screenshot oladi.
-    """
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+try:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--single-process",
+                "--disable-web-security",
+            ]
+        )
+
+        page = browser.new_page(
+            viewport={"width": 1600, "height": 1000},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0 Safari/537.36"
             )
-            page = browser.new_page(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-            # Finviz ticker sahifasiga kiramiz
-            url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
-            page.goto(url, wait_until="networkidle", timeout=30000)
+        )
 
-            # Grafik elementini kutamiz
-            page.wait_for_selector("#chart", timeout=15000)
+        url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
 
-            # Faqat grafik qismini screenshot olamiz
-            chart = page.locator("#chart")
-            img_bytes = chart.screenshot(type="png")
-            browser.close()
+        page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=60000
+        )
 
-            if img_bytes and len(img_bytes) > 1000:
-                print(f"[Screenshot] {ticker} grafigi olindi ({len(img_bytes)} bayt)")
-                return img_bytes
-            return None
-    except Exception as e:
-        print(f"[Screenshot xato] {ticker}: {e}")
-        return None
+        page.wait_for_timeout(5000)
+
+        screenshot = page.screenshot(
+            type="png",
+            full_page=False
+        )
+
+        browser.close()
+
+        if screenshot and len(screenshot) > 10000:
+            print(f"[Screenshot] {ticker} OK")
+            return screenshot
+
+except Exception as e:
+    print(f"[Screenshot xato] {ticker}: {e}")
+
+return None
 
 def get_chart_image(ticker: str) -> bytes | None:
     """
