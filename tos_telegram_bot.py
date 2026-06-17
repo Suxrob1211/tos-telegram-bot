@@ -82,7 +82,7 @@ try:
             full_page=False
         )
 
-browser.close()
+        browser.close()
 
         if screenshot and len(screenshot) > 10000:
             print(f"[Screenshot] {ticker} OK")
