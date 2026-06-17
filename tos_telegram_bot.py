@@ -1,6 +1,6 @@
 """
-TOS Alert → Telegram Bot (v4)
-Yahoo Finance dan to'liq ma'lumot + Finviz grafik
+TOS Alert → Telegram Bot (v5)
+Real-time Finviz screenshot + Yahoo Finance ma'lumotlari
 """
 
 import imaplib
@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Sozlamalar ──────────────────────────────────────────────────────────────
 GMAIL_USER       = os.getenv("GMAIL_USER")
 GMAIL_APP_PASS   = os.getenv("GMAIL_APP_PASSWORD")
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -24,11 +23,9 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 TOS_SENDER       = "alerts@thinkorswim.com"
 CHECK_INTERVAL   = 15
-
 MIN_RVOL         = 1.0
 RSI_MIN          = 30
 RSI_MAX          = 80
-
 SENT_IDS_FILE    = "sent_ids.txt"
 
 def load_sent_ids() -> set:
@@ -42,6 +39,70 @@ def save_sent_id(msg_id: str):
         f.write(msg_id + "\n")
 
 ALREADY_SENT = load_sent_ids()
+
+# ── Playwright bilan real-time screenshot ────────────────────────────────────
+def get_finviz_screenshot(ticker: str) -> bytes | None:
+    """
+    Playwright orqali Finviz sahifasidan real-time grafik screenshot oladi.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            )
+            page = browser.new_page(
+                viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
+            # Finviz ticker sahifasiga kiramiz
+            url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
+            page.goto(url, wait_until="networkidle", timeout=30000)
+
+            # Grafik elementini kutamiz
+            page.wait_for_selector("#chart", timeout=15000)
+
+            # Faqat grafik qismini screenshot olamiz
+            chart = page.locator("#chart")
+            img_bytes = chart.screenshot(type="png")
+            browser.close()
+
+            if img_bytes and len(img_bytes) > 1000:
+                print(f"[Screenshot] {ticker} grafigi olindi ({len(img_bytes)} bayt)")
+                return img_bytes
+            return None
+    except Exception as e:
+        print(f"[Screenshot xato] {ticker}: {e}")
+        return None
+
+def get_chart_image(ticker: str) -> bytes | None:
+    """
+    1. Playwright screenshot (real-time)
+    2. Finviz chart URL (fallback)
+    """
+    # 1-usul: Playwright screenshot
+    img = get_finviz_screenshot(ticker)
+    if img:
+        return img
+
+    # 2-usul: Finviz chart URL dan yuklab olish
+    try:
+        url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://finviz.com/",
+            "Accept": "image/png,image/*,*/*",
+        }
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        if resp.content[:4] == b'\x89PNG':
+            print(f"[Chart URL] {ticker} grafigi olindi")
+            return resp.content
+    except Exception as e:
+        print(f"[Chart URL xato] {e}")
+
+    return None
 
 # ── Texnik indikatorlar ───────────────────────────────────────────────────────
 def calc_rsi(closes: pd.Series, period: int = 14) -> float:
@@ -70,41 +131,26 @@ def calc_macd(closes: pd.Series) -> str:
     except Exception:
         return "N/A"
 
-# ── Yahoo Finance — barcha ma'lumotlar ──────────────────────────────────────
+# ── Yahoo Finance ─────────────────────────────────────────────────────────────
 def get_stock_info(ticker: str) -> dict:
-    """Yahoo Finance dan to'liq ma'lumot oladi."""
     try:
         stock = yf.Ticker(ticker)
         info  = stock.info
 
-        # Narx
-        price = (
-            info.get("currentPrice")
-            or info.get("regularMarketPrice")
-            or info.get("navPrice")
-            or 0.0
+        price = float(
+            info.get("currentPrice") or
+            info.get("regularMarketPrice") or
+            info.get("navPrice") or 0.0
         )
-        price = float(price) if price else 0.0
-
-        # Oldingi yopilish
-        prev_close = float(
-            info.get("previousClose")
-            or info.get("regularMarketPreviousClose")
-            or 0.0
-        )
+        prev_close = float(info.get("previousClose") or info.get("regularMarketPreviousClose") or 0.0)
         change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
-
-        # Hajm
-        volume  = int(info.get("volume") or info.get("regularMarketVolume") or 0)
-        avg_vol = int(info.get("averageVolume") or 0)
-        rvol    = round(volume / avg_vol, 2) if avg_vol else 0.0
-
-        # Boshqa ma'lumotlar
+        volume     = int(info.get("volume") or info.get("regularMarketVolume") or 0)
+        avg_vol    = int(info.get("averageVolume") or 0)
+        rvol       = round(volume / avg_vol, 2) if avg_vol else 0.0
         market_cap = info.get("marketCap") or 0
         sector     = info.get("sector") or "N/A"
         company    = info.get("longName") or info.get("shortName") or ticker
 
-        # Tarixiy ma'lumot (RSI, MACD, S/R)
         hist = stock.history(period="1y")
         if not hist.empty:
             closes     = hist["Close"].dropna()
@@ -113,24 +159,14 @@ def get_stock_info(ticker: str) -> dict:
             support    = round(float(hist["Low"].min()), 2)
             resistance = round(float(hist["High"].max()), 2)
         else:
-            rsi        = 0.0
-            macd_trend = "N/A"
-            support    = 0.0
-            resistance = 0.0
+            rsi, macd_trend, support, resistance = 0.0, "N/A", 0.0, 0.0
 
         return {
-            "company":    company,
-            "sector":     sector,
-            "price":      price,
-            "change_pct": change_pct,
-            "volume":     volume,
-            "avg_volume": avg_vol,
-            "rvol":       rvol,
-            "market_cap": market_cap,
-            "rsi":        rsi,
-            "macd_trend": macd_trend,
-            "support":    support,
-            "resistance": resistance,
+            "company": company, "sector": sector,
+            "price": price, "change_pct": change_pct,
+            "volume": volume, "avg_volume": avg_vol, "rvol": rvol,
+            "market_cap": market_cap, "rsi": rsi,
+            "macd_trend": macd_trend, "support": support, "resistance": resistance,
         }
     except Exception as e:
         print(f"[Yahoo xato] {ticker}: {e}")
@@ -138,12 +174,9 @@ def get_stock_info(ticker: str) -> dict:
 
 def format_number(n) -> str:
     n = float(n or 0)
-    if n >= 1_000_000_000:
-        return f"{n/1_000_000_000:.2f}B"
-    if n >= 1_000_000:
-        return f"{n/1_000_000:.2f}M"
-    if n >= 1_000:
-        return f"{n/1_000:.2f}K"
+    if n >= 1_000_000_000: return f"{n/1_000_000_000:.2f}B"
+    if n >= 1_000_000:     return f"{n/1_000_000:.2f}M"
+    if n >= 1_000:         return f"{n/1_000:.2f}K"
     return str(round(n, 2))
 
 # ── Signal filtri ─────────────────────────────────────────────────────────────
@@ -152,16 +185,13 @@ def is_strong_signal(d: dict) -> tuple:
     if d["rvol"] > 0 and d["rvol"] < MIN_RVOL:
         reasons.append(f"RVol past ({d['rvol']} < {MIN_RVOL})")
     if d["rsi"] > 0 and (d["rsi"] < RSI_MIN or d["rsi"] > RSI_MAX):
-        reasons.append(f"RSI chegaradan tashqari ({d['rsi']})")
-    if reasons:
-        return False, " | ".join(reasons)
-    return True, "OK"
+        reasons.append(f"RSI chegaradan ({d['rsi']})")
+    return (False, " | ".join(reasons)) if reasons else (True, "OK")
 
 # ── Xabar yasash ──────────────────────────────────────────────────────────────
 def build_message(ticker: str, scanner_name: str) -> tuple:
     d = get_stock_info(ticker)
     if not d or d["price"] == 0:
-        print(f"[Ma'lumot yo'q] {ticker}")
         return "", False, "Ma'lumot olinmadi"
 
     passed, reason = is_strong_signal(d)
@@ -169,19 +199,10 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
         return "", False, reason
 
     arrow   = "🟢" if d["change_pct"] >= 0 else "🔴"
-    cap_str = format_number(d["market_cap"]) if d["market_cap"] else "N/A"
-    vol_str = format_number(d["volume"])
-    avg_str = format_number(d["avg_volume"])
-
-    rsi = d["rsi"]
-    if rsi >= 70:
-        rsi_label = f"{rsi} ⚠️ Overbought"
-    elif 0 < rsi <= 30:
-        rsi_label = f"{rsi} ⚠️ Oversold"
-    elif rsi > 0:
-        rsi_label = str(rsi)
-    else:
-        rsi_label = "N/A"
+    rsi     = d["rsi"]
+    rsi_label = (f"{rsi} ⚠️ Overbought" if rsi >= 70
+                 else f"{rsi} ⚠️ Oversold" if 0 < rsi <= 30
+                 else str(rsi) if rsi > 0 else "N/A")
 
     msg = (
         f"🧠 <b>Algorithm:</b> {scanner_name}\n"
@@ -190,10 +211,10 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
         f"🏭 <b>Sector:</b> {d['sector']}\n"
         f"💰 <b>Price:</b> ${d['price']:.2f}\n"
         f"📊 <b>% Change:</b> {arrow} {d['change_pct']:+.2f}%\n"
-        f"📉 <b>Yesterday Vol:</b> {avg_str}\n"
-        f"📈 <b>Current Vol:</b> {vol_str}\n"
+        f"📉 <b>Yesterday Vol:</b> {format_number(d['avg_volume'])}\n"
+        f"📈 <b>Current Vol:</b> {format_number(d['volume'])}\n"
         f"⚡ <b>RVol:</b> {d['rvol']}\n"
-        f"📊 <b>Market Cap:</b> {cap_str}\n"
+        f"📊 <b>Market Cap:</b> {format_number(d['market_cap'])}\n"
         f"〰️ <b>RSI (14):</b> {rsi_label}\n"
         f"📉 <b>MACD:</b> {d['macd_trend']}\n"
         f"🎯 <b>Support:</b> ${d['support']} | <b>Resistance:</b> ${d['resistance']}\n"
@@ -201,96 +222,59 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
     )
     return msg, True, "OK"
 
-# ── Finviz grafik yuklash ─────────────────────────────────────────────────────
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def send_telegram_photo(caption: str, ticker: str):
-    """
-    Finviz grafik rasmini 3 usulda yuborishga harakat qiladi:
-    1. Rasmni Railway serverida yuklab, fayl sifatida yuborish
-    2. Finviz URL ni to'g'ridan-to'g'ri Telegram ga berish
-    3. Grafik linki caption ga qo'shib matn yuborish
-    """
-    chart_url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l"
+    img_bytes = get_chart_image(ticker)
 
-    # 1-usul: rasmni yuklab fayl sifatida yuborish
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer":    "https://finviz.com/",
-            "Accept":     "image/png,image/*,*/*",
-        }
-        img_resp = requests.get(chart_url, headers=headers, timeout=15)
-        img_resp.raise_for_status()
-        if img_resp.content[:4] == b'\x89PNG':
+    if img_bytes:
+        try:
             url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
             resp = requests.post(url,
                 data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"},
-                files={"photo": (f"{ticker}.png", img_resp.content, "image/png")},
+                files={"photo": (f"{ticker}.png", img_bytes, "image/png")},
                 timeout=20
             )
             if resp.ok:
-                print(f"[Grafik] {ticker} fayl sifatida yuborildi ✅")
+                print(f"[Telegram] {ticker} grafik bilan yuborildi ✅")
                 return
-            print(f"[1-usul xato] {resp.text}")
-    except Exception as e:
-        print(f"[1-usul xato] {e}")
+            print(f"[Telegram photo xato] {resp.text}")
+        except Exception as e:
+            print(f"[Telegram photo xato] {e}")
 
-    # 2-usul: URL ni to'g'ridan-to'g'ri Telegram ga berish
-    try:
-        url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-        resp = requests.post(url, json={
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "photo":      chart_url,
-            "caption":    caption,
-            "parse_mode": "HTML",
-        }, timeout=15)
-        if resp.ok:
-            print(f"[Grafik] {ticker} URL orqali yuborildi ✅")
-            return
-        print(f"[2-usul xato] {resp.text}")
-    except Exception as e:
-        print(f"[2-usul xato] {e}")
-
-    # 3-usul: grafik linki bilan matn yuborish
-    caption_with_link = caption + f'\n🔗 <a href="https://finviz.com/quote.ashx?t={ticker}">Finviz grafikni ko\'rish</a>'
+    # Grafik chiqmasa — link bilan matn
+    caption_with_link = caption + f'\n🔗 <a href="https://finviz.com/quote.ashx?t={ticker}">Finviz grafik</a>'
     send_telegram_text(caption_with_link)
-    print(f"[Grafik] {ticker} link bilan matn yuborildi")
 
 def send_telegram_text(text: str):
     url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     resp = requests.post(url, json={
-        "chat_id":    TELEGRAM_CHAT_ID,
-        "text":       text,
-        "parse_mode": "HTML",
+        "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
     }, timeout=15)
     if not resp.ok:
         print(f"[Telegram matn xato] {resp.text}")
 
-# ── Email o'qish ──────────────────────────────────────────────────────────────
+# ── Email parsing ─────────────────────────────────────────────────────────────
 def extract_tickers_and_scanner(subject: str, body: str):
     text = subject
-
     m = re.search(r"added to ([^:]+?)(?:\s*:|\.\s*$|\s+oldin\b)", text, re.IGNORECASE)
-    if m:
-        scanner_name = m.group(1).strip()
-    else:
-        m2 = re.search(r"added to (.+?)(?:\.|$)", text, re.IGNORECASE)
-        scanner_name = m2.group(1).strip() if m2 else "TOS Scanner"
+    scanner_name = m.group(1).strip() if m else (
+        re.search(r"added to (.+?)(?:\.|$)", text, re.IGNORECASE) or type("", (), {"group": lambda s, n: "TOS Scanner"})()
+    ).group(1).strip()
 
     tickers = []
-    m = re.search(r"symbols?\s*:\s*([A-Z][A-Z ,]*?)\s+(?:was|were)\b", text, re.IGNORECASE)
-    if m:
-        raw = m.group(1)
-        tickers = [t.strip() for t in raw.split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
+    m2 = re.search(r"symbols?\s*:\s*([\w ,]+?)\s+(?:was|were)\b", text, re.IGNORECASE)
+    if m2:
+        tickers = [t.strip() for t in m2.group(1).split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
 
-    if not tickers:
-        m2 = re.search(r":\s*([A-Z]{1,5}(?:,\s*[A-Z]{1,5})+)\s*$", text)
-        if m2:
-            raw = m2.group(1)
-            tickers = [t.strip() for t in raw.split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
+    if not tickers and body:
+        m3 = re.search(r"symbols?\s*:\s*([\w ,]+?)\s+(?:was|were)\b", body, re.IGNORECASE)
+        if m3:
+            tickers = [t.strip() for t in m3.group(1).split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
 
+    print(f"[Parser] Scanner: '{scanner_name}', Tickers: {tickers}")
     return list(dict.fromkeys(tickers)), scanner_name
 
+# ── Email tekshirish ──────────────────────────────────────────────────────────
 def check_email():
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -299,14 +283,12 @@ def check_email():
 
         since = datetime.now().strftime("%d-%b-%Y")
         _, data = mail.search(None, f'(UNSEEN FROM "{TOS_SENDER}" SINCE "{since}")')
-
         ids = data[0].split()
         print(f"[Email] {len(ids)} ta yangi TOS alert")
 
         for eid in ids:
             _, msg_data = mail.fetch(eid, "(RFC822)")
-            raw     = msg_data[0][1]
-            msg     = email.message_from_bytes(raw)
+            msg     = email.message_from_bytes(msg_data[0][1])
             subject = msg.get("Subject", "")
             msg_id  = msg.get("Message-ID", str(eid))
 
@@ -325,11 +307,10 @@ def check_email():
             print(f"[Email] Subject: {subject}")
 
             if not re.search(r"New symbols?\s*:", subject, re.IGNORECASE):
-                print("[Skip] Following list email otkazib yuborildi")
+                print("[Skip] Following list email")
                 continue
 
             tickers, scanner_name = extract_tickers_and_scanner(subject, body)
-            print(f"[Email] Tickers: {tickers}, Scanner: {scanner_name}")
 
             for ticker in tickers:
                 caption, passed, reason = build_message(ticker, scanner_name)
@@ -344,13 +325,12 @@ def check_email():
             save_sent_id(msg_id)
 
         mail.logout()
-
     except Exception as e:
         print(f"[Xato] {e}")
 
 # ── Asosiy tsikl ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("🚀 TOS → Telegram bot v4 ishga tushdi!")
+    print("🚀 TOS → Telegram bot v5 ishga tushdi!")
     print(f"   Gmail: {GMAIL_USER}")
     print(f"   Kanal: {TELEGRAM_CHAT_ID}")
     print(f"   Har {CHECK_INTERVAL}s tekshiradi...")
