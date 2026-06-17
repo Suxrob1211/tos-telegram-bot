@@ -226,7 +226,7 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
 def send_telegram_photo(caption: str, ticker: str):
     img_bytes = get_chart_image(ticker)
 
-    if img_bytes:
+        if img_bytes:
         try:
             url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
             resp = requests.post(url,
@@ -255,42 +255,64 @@ def send_telegram_text(text: str):
 
 # ── Email parsing ─────────────────────────────────────────────────────────────
 def extract_tickers_and_scanner(subject: str, body: str):
+
     text = subject
-    m = re.search(r"added to ([^:]+?)(?:\s*:|\.\s*$|\s+oldin\b)", text, re.IGNORECASE)
-    scanner_name = m.group(1).strip() if m else (
-        re.search(r"added to (.+?)(?:\.|$)", text, re.IGNORECASE) or type("", (), {"group": lambda s, n: "TOS Scanner"})()
-    ).group(1).strip()
-tickers = []
 
-# New symbol: INSP
-m_single = re.search(
-    r"New symbol:\s*([A-Z]{1,5})",
-    text,
-    re.IGNORECASE
-)
-
-if m_single:
-    tickers = [m_single.group(1).upper()]
-
-# New symbols: COP, CVX, MGY
-if not tickers:
-
-    m_multi = re.search(
-        r"New symbols:\s*(.*?)\s+(?:was|were)\b",
+    m = re.search(
+        r"added to ([^:]+?)(?:\s*:|\.\s*$|\s+oldin\b)",
         text,
         re.IGNORECASE
     )
 
-    if m_multi:
+    if m:
+        scanner_name = m.group(1).strip()
+    else:
+        m_alt = re.search(
+            r"added to (.+?)(?:\.|$)",
+            text,
+            re.IGNORECASE
+        )
 
-        tickers = [
-            t.strip().upper()
-            for t in m_multi.group(1).split(",")
-            if re.match(r"^[A-Z]{1,5}$", t.strip())
-        ]
-    
+        scanner_name = (
+            m_alt.group(1).strip()
+            if m_alt
+            else "TOS Scanner"
+        )
 
-    print(f"[Parser] Scanner: '{scanner_name}', Tickers: {tickers}")
+    tickers = []
+
+    # Alert: New symbol: INSP was added to Trend line
+    m_single = re.search(
+        r"New symbol:\s*([A-Z]{1,5})",
+        text,
+        re.IGNORECASE
+    )
+
+    if m_single:
+        tickers = [m_single.group(1).upper()]
+
+    # Alert: New symbols: COP, CVX, MGY were added...
+    if not tickers:
+
+        m_multi = re.search(
+            r"New symbols:\s*(.*?)\s+(?:was|were)\b",
+            text,
+            re.IGNORECASE
+        )
+
+        if m_multi:
+
+            tickers = [
+                t.strip().upper()
+                for t in m_multi.group(1).split(",")
+                if re.match(r"^[A-Z]{1,5}$", t.strip())
+            ]
+
+    print(
+        f"[Parser] Scanner: '{scanner_name}', "
+        f"Tickers: {tickers}"
+    )
+
     return list(dict.fromkeys(tickers)), scanner_name
 
 # ── Email tekshirish ──────────────────────────────────────────────────────────
