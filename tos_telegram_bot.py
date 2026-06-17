@@ -260,16 +260,35 @@ def extract_tickers_and_scanner(subject: str, body: str):
     scanner_name = m.group(1).strip() if m else (
         re.search(r"added to (.+?)(?:\.|$)", text, re.IGNORECASE) or type("", (), {"group": lambda s, n: "TOS Scanner"})()
     ).group(1).strip()
+tickers = []
 
-    tickers = []
-    m2 = re.search(r"symbols?\s*:\s*([\w ,]+?)\s+(?:was|were)\b", text, re.IGNORECASE)
-    if m2:
-        tickers = [t.strip() for t in m2.group(1).split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
+# New symbol: INSP
+m_single = re.search(
+    r"New symbol:\s*([A-Z]{1,5})",
+    text,
+    re.IGNORECASE
+)
 
-    if not tickers and body:
-        m3 = re.search(r"symbols?\s*:\s*([\w ,]+?)\s+(?:was|were)\b", body, re.IGNORECASE)
-        if m3:
-            tickers = [t.strip() for t in m3.group(1).split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
+if m_single:
+    tickers = [m_single.group(1).upper()]
+
+# New symbols: COP, CVX, MGY
+if not tickers:
+
+    m_multi = re.search(
+        r"New symbols:\s*(.*?)\s+(?:was|were)\b",
+        text,
+        re.IGNORECASE
+    )
+
+    if m_multi:
+
+        tickers = [
+            t.strip().upper()
+            for t in m_multi.group(1).split(",")
+            if re.match(r"^[A-Z]{1,5}$", t.strip())
+        ]
+    
 
     print(f"[Parser] Scanner: '{scanner_name}', Tickers: {tickers}")
     return list(dict.fromkeys(tickers)), scanner_name
