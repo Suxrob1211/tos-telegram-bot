@@ -86,7 +86,7 @@ try:
 
         if screenshot and len(screenshot) > 10000:
             print(f"[Screenshot] {ticker} OK")
-            return screenshot
+        return screenshot
 
         return None
 
