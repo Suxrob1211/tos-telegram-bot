@@ -90,7 +90,7 @@ try:
 
         return None
 
-    except Exception as e:
+except Exception as e:
         print(f"[Screenshot xato] {ticker}: {e}")
         return None
 
