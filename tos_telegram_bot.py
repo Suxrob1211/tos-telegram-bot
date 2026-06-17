@@ -202,47 +202,59 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
     return msg, True, "OK"
 
 # ── Finviz grafik yuklash ─────────────────────────────────────────────────────
-def download_finviz_chart(ticker: str) -> bytes | None:
-    """Finviz chart rasmini yuklab qaytaradi."""
-    url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer":    "https://finviz.com/",
-        "Accept":     "image/png,image/*,*/*",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
-        # PNG ekanligini tekshiramiz
-        if resp.content[:4] == b'\x89PNG':
-            return resp.content
-        print(f"[Grafik] PNG emas ({len(resp.content)} bayt)")
-        return None
-    except Exception as e:
-        print(f"[Grafik yuklab xato] {ticker}: {e}")
-        return None
-
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def send_telegram_photo(caption: str, ticker: str):
-    img_bytes = download_finviz_chart(ticker)
+    """
+    Finviz grafik rasmini 3 usulda yuborishga harakat qiladi:
+    1. Rasmni Railway serverida yuklab, fayl sifatida yuborish
+    2. Finviz URL ni to'g'ridan-to'g'ri Telegram ga berish
+    3. Grafik linki caption ga qo'shib matn yuborish
+    """
+    chart_url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l"
 
-    if img_bytes:
-        # Rasmni fayl sifatida yuboramiz
-        try:
+    # 1-usul: rasmni yuklab fayl sifatida yuborish
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer":    "https://finviz.com/",
+            "Accept":     "image/png,image/*,*/*",
+        }
+        img_resp = requests.get(chart_url, headers=headers, timeout=15)
+        img_resp.raise_for_status()
+        if img_resp.content[:4] == b'\x89PNG':
             url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
             resp = requests.post(url,
                 data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"},
-                files={"photo": (f"{ticker}.png", img_bytes, "image/png")},
+                files={"photo": (f"{ticker}.png", img_resp.content, "image/png")},
                 timeout=20
             )
             if resp.ok:
+                print(f"[Grafik] {ticker} fayl sifatida yuborildi ✅")
                 return
-            print(f"[Telegram photo xato] {resp.text}")
-        except Exception as e:
-            print(f"[Telegram photo xato] {e}")
+            print(f"[1-usul xato] {resp.text}")
+    except Exception as e:
+        print(f"[1-usul xato] {e}")
 
-    # Grafik chiqmasa — faqat matn yuboradi
-    send_telegram_text(caption)
+    # 2-usul: URL ni to'g'ridan-to'g'ri Telegram ga berish
+    try:
+        url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+        resp = requests.post(url, json={
+            "chat_id":    TELEGRAM_CHAT_ID,
+            "photo":      chart_url,
+            "caption":    caption,
+            "parse_mode": "HTML",
+        }, timeout=15)
+        if resp.ok:
+            print(f"[Grafik] {ticker} URL orqali yuborildi ✅")
+            return
+        print(f"[2-usul xato] {resp.text}")
+    except Exception as e:
+        print(f"[2-usul xato] {e}")
+
+    # 3-usul: grafik linki bilan matn yuborish
+    caption_with_link = caption + f'\n🔗 <a href="https://finviz.com/quote.ashx?t={ticker}">Finviz grafikni ko\'rish</a>'
+    send_telegram_text(caption_with_link)
+    print(f"[Grafik] {ticker} link bilan matn yuborildi")
 
 def send_telegram_text(text: str):
     url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
