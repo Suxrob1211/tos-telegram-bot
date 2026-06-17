@@ -88,10 +88,9 @@ try:
             print(f"[Screenshot] {ticker} OK")
             return screenshot
 
-except Exception as e:
-    print(f"[Screenshot xato] {ticker}: {e}")
-
-return None
+            except Exception as e:
+            print(f"[Screenshot xato] {ticker}: {e}")
+            return None
 
 def get_chart_image(ticker: str) -> bytes | None:
     """
