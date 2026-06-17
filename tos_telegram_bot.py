@@ -40,71 +40,57 @@ def save_sent_id(msg_id: str):
 
 ALREADY_SENT = load_sent_ids()
 
-# ── Playwright bilan real-time screenshot ────────────────────────────────────
-try:
-    from playwright.sync_api import sync_playwright
+# ── Playwright bilan real-time screenshot ─────────────────────────────────────
+def get_finviz_screenshot(ticker: str):
+    try:
+        from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
-
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--single-process",
-                "--disable-web-security",
-            ]
-        )
-
-        page = browser.new_page(
-            viewport={"width": 1600, "height": 1000},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0 Safari/537.36"
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--single-process",
+                    "--disable-web-security",
+                ]
             )
-        )
 
-        url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
+            page = browser.new_page(
+                viewport={"width": 1600, "height": 1000},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/125.0 Safari/537.36"
+                )
+            )
 
-        page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=60000
-        )
+            url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(5000)
 
-        page.wait_for_timeout(5000)
+            screenshot = page.screenshot(type="png", full_page=False)
+            browser.close()
 
-        screenshot = page.screenshot(
-            type="png",
-            full_page=False
-        )
+            if screenshot and len(screenshot) > 10000:
+                print(f"[Screenshot] {ticker} OK")
+                return screenshot
 
-        browser.close()
+            return None
 
-        if screenshot and len(screenshot) > 10000:
-            print(f"[Screenshot] {ticker} OK")
-        return screenshot
-
-        return None
-
-except Exception as e:
+    except Exception as e:
         print(f"[Screenshot xato] {ticker}: {e}")
         return None
 
-def get_chart_image(ticker: str) -> bytes | None:
-    """
-    1. Playwright screenshot (real-time)
-    2. Finviz chart URL (fallback)
-    """
-    # 1-usul: Playwright screenshot
+
+def get_chart_image(ticker: str):
+    """1. Playwright screenshot, 2. Finviz chart URL (fallback)"""
     img = get_finviz_screenshot(ticker)
     if img:
         return img
 
-    # 2-usul: Finviz chart URL dan yuklab olish
     try:
         url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
         headers = {
@@ -122,6 +108,7 @@ def get_chart_image(ticker: str) -> bytes | None:
 
     return None
 
+
 # ── Texnik indikatorlar ───────────────────────────────────────────────────────
 def calc_rsi(closes: pd.Series, period: int = 14) -> float:
     try:
@@ -137,6 +124,7 @@ def calc_rsi(closes: pd.Series, period: int = 14) -> float:
     except Exception:
         return 0.0
 
+
 def calc_macd(closes: pd.Series) -> str:
     try:
         if len(closes) < 26:
@@ -149,6 +137,7 @@ def calc_macd(closes: pd.Series) -> str:
     except Exception:
         return "N/A"
 
+
 # ── Yahoo Finance ─────────────────────────────────────────────────────────────
 def get_stock_info(ticker: str) -> dict:
     try:
@@ -160,7 +149,10 @@ def get_stock_info(ticker: str) -> dict:
             info.get("regularMarketPrice") or
             info.get("navPrice") or 0.0
         )
-        prev_close = float(info.get("previousClose") or info.get("regularMarketPreviousClose") or 0.0)
+        prev_close = float(
+            info.get("previousClose") or
+            info.get("regularMarketPreviousClose") or 0.0
+        )
         change_pct = ((price - prev_close) / prev_close * 100) if prev_close else 0.0
         volume     = int(info.get("volume") or info.get("regularMarketVolume") or 0)
         avg_vol    = int(info.get("averageVolume") or 0)
@@ -190,12 +182,14 @@ def get_stock_info(ticker: str) -> dict:
         print(f"[Yahoo xato] {ticker}: {e}")
         return {}
 
+
 def format_number(n) -> str:
     n = float(n or 0)
     if n >= 1_000_000_000: return f"{n/1_000_000_000:.2f}B"
     if n >= 1_000_000:     return f"{n/1_000_000:.2f}M"
     if n >= 1_000:         return f"{n/1_000:.2f}K"
     return str(round(n, 2))
+
 
 # ── Signal filtri ─────────────────────────────────────────────────────────────
 def is_strong_signal(d: dict) -> tuple:
@@ -205,6 +199,7 @@ def is_strong_signal(d: dict) -> tuple:
     if d["rsi"] > 0 and (d["rsi"] < RSI_MIN or d["rsi"] > RSI_MAX):
         reasons.append(f"RSI chegaradan ({d['rsi']})")
     return (False, " | ".join(reasons)) if reasons else (True, "OK")
+
 
 # ── Xabar yasash ──────────────────────────────────────────────────────────────
 def build_message(ticker: str, scanner_name: str) -> tuple:
@@ -216,11 +211,13 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
     if not passed:
         return "", False, reason
 
-    arrow   = "🟢" if d["change_pct"] >= 0 else "🔴"
-    rsi     = d["rsi"]
-    rsi_label = (f"{rsi} ⚠️ Overbought" if rsi >= 70
-                 else f"{rsi} ⚠️ Oversold" if 0 < rsi <= 30
-                 else str(rsi) if rsi > 0 else "N/A")
+    arrow = "🟢" if d["change_pct"] >= 0 else "🔴"
+    rsi   = d["rsi"]
+    rsi_label = (
+        f"{rsi} ⚠️ Overbought" if rsi >= 70 else
+        f"{rsi} ⚠️ Oversold"   if 0 < rsi <= 30 else
+        str(rsi) if rsi > 0 else "N/A"
+    )
 
     msg = (
         f"🧠 <b>Algorithm:</b> {scanner_name}\n"
@@ -240,14 +237,15 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
     )
     return msg, True, "OK"
 
+
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def send_telegram_photo(caption: str, ticker: str):
     img_bytes = get_chart_image(ticker)
 
     if img_bytes:
         try:
-            url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-            resp = requests.post(url,
+            resp = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto",
                 data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"},
                 files={"photo": (f"{ticker}.png", img_bytes, "image/png")},
                 timeout=20
@@ -259,73 +257,53 @@ def send_telegram_photo(caption: str, ticker: str):
         except Exception as e:
             print(f"[Telegram photo xato] {e}")
 
-    # Grafik chiqmasa — link bilan matn
     caption_with_link = caption + f'\n🔗 <a href="https://finviz.com/quote.ashx?t={ticker}">Finviz grafik</a>'
     send_telegram_text(caption_with_link)
 
+
 def send_telegram_text(text: str):
-    url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    resp = requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
-    }, timeout=15)
+    resp = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+        json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+        timeout=15
+    )
     if not resp.ok:
         print(f"[Telegram matn xato] {resp.text}")
 
+
 # ── Email parsing ─────────────────────────────────────────────────────────────
 def extract_tickers_and_scanner(subject: str, body: str):
-
     text = subject.strip()
-
     scanner_name = "TOS Scanner"
-
-    # Alert: New symbol: INSP was added to Trend line .
-    # Alert: New symbol: AIT was added to trend + breakout + volume oldin.
-    # Alert: New symbols: COP, CVX were added to pullback.
 
     scanner_match = re.search(
         r"(?:was|were)\s+added\s+to\s+(.+?)(?:\.|$|oldin)",
         text,
         re.IGNORECASE
     )
-
     if scanner_match:
         scanner_name = scanner_match.group(1).strip()
 
     tickers = []
 
-    # Single ticker
-    m_single = re.search(
-        r"New symbol:\s*([A-Z]{1,5})",
-        text,
-        re.IGNORECASE
-    )
-
+    # Single ticker: "New symbol: INSP was added to..."
+    m_single = re.search(r"New symbol:\s*([A-Z]{1,5})", text, re.IGNORECASE)
     if m_single:
         tickers = [m_single.group(1).upper()]
 
-    # Multiple tickers
+    # Multiple tickers: "New symbols: COP, CVX were added to..."
     if not tickers:
-
-        m_multi = re.search(
-            r"New symbols:\s*(.*?)\s+(?:was|were)\b",
-            text,
-            re.IGNORECASE
-        )
-
+        m_multi = re.search(r"New symbols:\s*(.*?)\s+(?:was|were)\b", text, re.IGNORECASE)
         if m_multi:
-
             tickers = [
                 t.strip().upper()
                 for t in m_multi.group(1).split(",")
                 if re.match(r"^[A-Z]{1,5}$", t.strip())
             ]
 
-    print(
-        f"[Parser] Scanner: '{scanner_name}', "
-        f"Tickers: {tickers}"
-    )
-
+    print(f"[Parser] Scanner: '{scanner_name}', Tickers: {tickers}")
     return list(dict.fromkeys(tickers)), scanner_name
+
 
 # ── Email tekshirish ──────────────────────────────────────────────────────────
 def check_email():
@@ -386,6 +364,7 @@ def check_email():
                 mail.logout()
         except Exception:
             pass
+
 
 # ── Asosiy tsikl ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
