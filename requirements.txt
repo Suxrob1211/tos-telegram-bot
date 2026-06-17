@@ -1,3 +1,5 @@
-requests 
-yfinance 
-python-dotenv 
+requests
+yfinance
+python-dotenv
+pandas
+playwright
