@@ -226,7 +226,7 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
 def send_telegram_photo(caption: str, ticker: str):
     img_bytes = get_chart_image(ticker)
 
-            if img_bytes:
+    if img_bytes:
         try:
             url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
             resp = requests.post(url,
