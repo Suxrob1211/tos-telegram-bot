@@ -2,4 +2,3 @@ requests
 yfinance
 python-dotenv
 pandas
-playwright
