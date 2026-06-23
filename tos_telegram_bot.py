@@ -40,23 +40,91 @@ def save_sent_id(msg_id: str):
 
 ALREADY_SENT = load_sent_ids()
 
-# ── Grafik yuborish ──────────────────────────────────────────────────────────
+# ── Matplotlib bilan candlestick grafik ──────────────────────────────────────
 def get_chart_image(ticker: str) -> bytes | None:
-    """Finviz chart rasmini yuklab qaytaradi (matplotlib fallback bilan)."""
-    url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://finviz.com/",
-        "Accept": "image/png,image/*,*/*",
-    }
+    """Yahoo Finance dan data olib, matplotlib bilan Finviz uslubida grafik yasaydi."""
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        if resp.content[:4] == b'\x89PNG':
-            print(f"[Chart] {ticker} Finviz grafigi olindi")
-            return resp.content
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+        import io
+
+        stock = yf.Ticker(ticker)
+        hist  = stock.history(period="6mo")
+        if hist.empty or len(hist) < 5:
+            print(f"[Chart] {ticker} data yoq")
+            return None
+
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, figsize=(12, 7),
+            gridspec_kw={"height_ratios": [3, 1]},
+            facecolor="#0d1117"
+        )
+
+        # Candlestick
+        ax1.set_facecolor("#0d1117")
+        for i, (_, row) in enumerate(hist.iterrows()):
+            bull  = row["Close"] >= row["Open"]
+            color = "#00b386" if bull else "#ff4444"
+            ax1.plot([i, i], [row["Low"], row["High"]], color=color, linewidth=0.9, zorder=1)
+            h = max(abs(row["Close"] - row["Open"]), row["Close"] * 0.001)
+            rect = patches.Rectangle(
+                (i - 0.35, min(row["Open"], row["Close"])),
+                0.7, h, linewidth=0, facecolor=color, zorder=2
+            )
+            ax1.add_patch(rect)
+
+        # Moving averages
+        close = hist["Close"]
+        x = range(len(close))
+        if len(close) >= 20:
+            ax1.plot(x, close.rolling(20).mean(), color="#f0a500", linewidth=1.2, label="SMA 20")
+        if len(close) >= 50:
+            ax1.plot(x, close.rolling(50).mean(), color="#7b68ee", linewidth=1.2, label="SMA 50")
+        if len(close) >= 200:
+            ax1.plot(x, close.rolling(200).mean(), color="#ff7f50", linewidth=1.2, label="SMA 200")
+
+        # X labels
+        step = max(1, len(hist) // 8)
+        ax1.set_xticks(range(0, len(hist), step))
+        ax1.set_xticklabels(
+            [hist.index[i].strftime("%b %d") for i in range(0, len(hist), step)],
+            color="#8b949e", fontsize=8, rotation=0
+        )
+        ax1.tick_params(axis="y", colors="#8b949e", labelsize=9)
+        ax1.set_xlim(-1, len(hist))
+        ax1.set_title(f"{ticker}  ·  Daily  ·  6mo", color="#e6edf3", fontsize=13, pad=8, loc="left")
+        ax1.legend(facecolor="#161b22", labelcolor="#e6edf3", fontsize=8, loc="upper left")
+        for sp in ax1.spines.values():
+            sp.set_color("#30363d")
+        ax1.yaxis.grid(True, color="#21262d", linewidth=0.6)
+        ax1.set_axisbelow(True)
+
+        # Volume
+        ax2.set_facecolor("#0d1117")
+        vol_colors = ["#00b386" if c >= o else "#ff4444"
+                      for c, o in zip(hist["Close"], hist["Open"])]
+        ax2.bar(range(len(hist)), hist["Volume"] / 1_000_000, color=vol_colors, alpha=0.85)
+        ax2.set_ylabel("Vol M", color="#8b949e", fontsize=8)
+        ax2.tick_params(colors="#8b949e", labelsize=7)
+        ax2.set_xlim(-1, len(hist))
+        for sp in ax2.spines.values():
+            sp.set_color("#30363d")
+        ax2.yaxis.grid(True, color="#21262d", linewidth=0.5)
+        ax2.set_axisbelow(True)
+
+        plt.tight_layout(pad=1.2)
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=130, bbox_inches="tight", facecolor="#0d1117")
+        buf.seek(0)
+        img = buf.read()
+        plt.close()
+        print(f"[Chart] {ticker} grafigi yaratildi ({len(img)//1024}KB)")
+        return img
     except Exception as e:
-        print(f"[Finviz xato] {e}")
-    return None
+        print(f"[Chart xato] {ticker}: {e}")
+        return None
 
 # ── Texnik indikatorlar ───────────────────────────────────────────────────────
 def calc_rsi(closes: pd.Series, period: int = 14) -> float:
@@ -178,43 +246,25 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def send_telegram_photo(caption: str, ticker: str):
-    chart_url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
-
-    # 1-usul: rasmni yuklab fayl sifatida yuborish
     img_bytes = get_chart_image(ticker)
+
     if img_bytes:
         try:
             url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
             resp = requests.post(url,
                 data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"},
                 files={"photo": (f"{ticker}.png", img_bytes, "image/png")},
-                timeout=20
+                timeout=30
             )
             if resp.ok:
                 print(f"[Telegram] {ticker} grafik bilan yuborildi ✅")
                 return
-            print(f"[1-usul xato] {resp.text}")
+            print(f"[Telegram xato] {resp.text}")
         except Exception as e:
-            print(f"[1-usul xato] {e}")
+            print(f"[Telegram xato] {e}")
 
-    # 2-usul: URL ni Telegram ga berish (Telegram serveri yuklab oladi)
-    try:
-        url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-        resp = requests.post(url, json={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "photo": chart_url,
-            "caption": caption,
-            "parse_mode": "HTML",
-        }, timeout=15)
-        if resp.ok:
-            print(f"[Telegram] {ticker} URL orqali yuborildi ✅")
-            return
-        print(f"[2-usul xato] {resp.text}")
-    except Exception as e:
-        print(f"[2-usul xato] {e}")
-
-    # 3-usul: matn + link
-    send_telegram_text(caption + f'\n🔗 <a href="https://finviz.com/quote.ashx?t={ticker}">Finviz grafik</a>')
+    # Grafik chiqmasa — matn yuboradi
+    send_telegram_text(caption)
 
 def send_telegram_text(text: str):
     url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -289,11 +339,11 @@ def check_email():
             # "Following list of SCANNER: TICKER1, TICKER2" formatidan ticker olish
             if is_following and not is_new_symbol:
                 # Subject: "Alert: Following list of trend + breakout + volume oldin: MGNI."
-                m_follow = re.search(r"Following list of (.+?)\s+oldin\s*:\s*([A-Z, ]+)", subject, re.IGNORECASE)
+                m_follow = re.search(r"Following list of (?:symbols? )?(?:were )?added to (.+?)\s+oldin\s*:\s*([A-Z, .]+)", subject, re.IGNORECASE)
                 if m_follow:
                     scanner_name = m_follow.group(1).strip().rstrip()
                     raw_tickers  = m_follow.group(2)
-                    tickers = [t.strip() for t in raw_tickers.split(",") if re.match(r"^[A-Z]{1,5}$", t.strip())]
+                    tickers = [t.strip().rstrip('.') for t in raw_tickers.split(",") if re.match(r"^[A-Z]{1,5}$", t.strip().rstrip('.'))]
                     print(f"[Following] Scanner: '{scanner_name}', Tickers: {tickers}")
                     for ticker in tickers:
                         caption, passed, reason = build_message(ticker, scanner_name)
