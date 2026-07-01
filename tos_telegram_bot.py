@@ -40,8 +40,45 @@ def save_sent_id(msg_id: str):
 
 ALREADY_SENT = load_sent_ids()
 
-# ── Matplotlib bilan candlestick grafik ──────────────────────────────────────
-def get_chart_image(ticker: str) -> bytes | None:
+# ── Finviz grafik (proksi orqali) ────────────────────────────────────────────
+def get_finviz_via_proxy(ticker: str) -> bytes | None:
+    """Bir nechta ochiq proksi/CORS xizmat orqali Finviz grafigini olishga harakat qiladi."""
+    finviz_url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
+
+    import urllib.parse
+    encoded = urllib.parse.quote(finviz_url, safe="")
+
+    proxies = [
+        f"https://api.allorigins.win/raw?url={encoded}",
+        f"https://corsproxy.io/?url={encoded}",
+        f"https://wsrv.nl/?url={encoded}",
+        f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",
+        # To'g'ridan-to'g'ri (proksisiz) — Railway IP bloklanmagan bo'lishi mumkin
+        finviz_url,
+    ]
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://finviz.com/",
+        "Accept": "image/png,image/*,*/*",
+    }
+
+    for i, proxy_url in enumerate(proxies):
+        try:
+            resp = requests.get(proxy_url, headers=headers, timeout=15)
+            if resp.status_code == 200 and resp.content[:4] == b'\x89PNG':
+                print(f"[Finviz proksi #{i+1}] {ticker} grafigi olindi ({len(resp.content)} bayt)")
+                return resp.content
+            else:
+                print(f"[Finviz proksi #{i+1}] muvaffaqiyatsiz (status={resp.status_code}, size={len(resp.content)})")
+        except Exception as e:
+            print(f"[Finviz proksi #{i+1} xato] {e}")
+        time.sleep(0.3)
+
+    return None
+
+# ── Matplotlib bilan candlestick grafik (zaxira) ─────────────────────────────
+def get_matplotlib_chart(ticker: str) -> bytes | None:
     """Yahoo Finance dan data olib, matplotlib bilan Finviz uslubida grafik yasaydi."""
     try:
         import matplotlib
