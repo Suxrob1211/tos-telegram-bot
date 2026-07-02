@@ -282,6 +282,14 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
     return msg, True, "OK"
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
+def get_chart_image(ticker: str) -> bytes | None:
+    """1. Finviz (proksi orqali)   2. Matplotlib (zaxira)"""
+    img = get_finviz_via_proxy(ticker)
+    if img:
+        return img
+    print(f"[Chart] Finviz ishlamadi, matplotlib bilan yasalmoqda...")
+    return get_matplotlib_chart(ticker)
+
 def send_telegram_photo(caption: str, ticker: str):
     img_bytes = get_chart_image(ticker)
 
