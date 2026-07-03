@@ -50,11 +50,9 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
 
     proxies = [
         f"https://api.allorigins.win/raw?url={encoded}",
-        f"https://corsproxy.io/?url={encoded}",
-        f"https://wsrv.nl/?url={encoded}",
+        f"https://api.allorigins.win/raw?url={encoded}",   # qayta urinish
         f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",
-        # To'g'ridan-to'g'ri (proksisiz) — Railway IP bloklanmagan bo'lishi mumkin
-        finviz_url,
+        f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",   # qayta urinish
     ]
 
     headers = {
@@ -65,7 +63,7 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
 
     for i, proxy_url in enumerate(proxies):
         try:
-            resp = requests.get(proxy_url, headers=headers, timeout=15)
+            resp = requests.get(proxy_url, headers=headers, timeout=25)
             if resp.status_code == 200 and resp.content[:4] == b'\x89PNG':
                 print(f"[Finviz proksi #{i+1}] {ticker} grafigi olindi ({len(resp.content)} bayt)")
                 return resp.content
