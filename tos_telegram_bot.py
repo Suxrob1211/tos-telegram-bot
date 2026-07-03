@@ -51,8 +51,7 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
     encoded = urllib.parse.quote(finviz_url, safe="")
 
     proxies = [
-        f"https://api.scraperapi.com/?api_key={SCRAPERAPI_KEY}&url={finviz_url}",
-        f"https://api.scraperapi.com/?api_key={SCRAPERAPI_KEY}&url={finviz_url}",   # qayta urinish
+        f"https://api.scraperapi.com/?api_key={SCRAPERAPI_KEY}&url={finviz_url}&render=false",
         f"https://api.allorigins.win/raw?url={encoded}",
         f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",
     ]
@@ -65,7 +64,8 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
 
     for i, proxy_url in enumerate(proxies):
         try:
-            resp = requests.get(proxy_url, headers=headers, timeout=25)
+            proxy_timeout = 40 if "scraperapi" in proxy_url else 20
+            resp = requests.get(proxy_url, headers=headers, timeout=proxy_timeout)
             if resp.status_code == 200 and resp.content[:4] == b'\x89PNG':
                 print(f"[Finviz proksi #{i+1}] {ticker} grafigi olindi ({len(resp.content)} bayt)")
                 return resp.content
