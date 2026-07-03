@@ -41,18 +41,20 @@ def save_sent_id(msg_id: str):
 ALREADY_SENT = load_sent_ids()
 
 # ── Finviz grafik (proksi orqali) ────────────────────────────────────────────
+SCRAPERAPI_KEY = os.getenv("SCRAPERAPI_KEY", "25a1884447a69ac9773958347c108f59")
+
 def get_finviz_via_proxy(ticker: str) -> bytes | None:
-    """Bir nechta ochiq proksi/CORS xizmat orqali Finviz grafigini olishga harakat qiladi."""
+    """ScraperAPI (asosiy) + bepul proksilar (zaxira) orqali Finviz grafigini oladi."""
     finviz_url = f"https://charts.finviz.com/chart.ashx?t={ticker}&ty=c&ta=1&p=d&s=l&_={int(time.time())}"
 
     import urllib.parse
     encoded = urllib.parse.quote(finviz_url, safe="")
 
     proxies = [
+        f"https://api.scraperapi.com/?api_key={SCRAPERAPI_KEY}&url={finviz_url}",
+        f"https://api.scraperapi.com/?api_key={SCRAPERAPI_KEY}&url={finviz_url}",   # qayta urinish
         f"https://api.allorigins.win/raw?url={encoded}",
-        f"https://api.allorigins.win/raw?url={encoded}",   # qayta urinish
         f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",
-        f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",   # qayta urinish
     ]
 
     headers = {
