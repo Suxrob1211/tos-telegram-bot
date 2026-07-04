@@ -13,7 +13,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
-from services.finviz import get_chart
+from services.finviz_api import get_chart
 
 load_dotenv()
 
