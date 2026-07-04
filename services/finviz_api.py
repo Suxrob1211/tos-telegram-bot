@@ -16,6 +16,11 @@ def get_chart(ticker: str):
     }
 
     r = requests.get(url, headers=headers, timeout=20)
+    
+    print("HTTP:", r.status_code)
+    print("Content-Type:", r.headers.get("content-type"))
+    print("Size:", len(r.content))
+    print(r.text[:300])
 
     if r.status_code != 200:
         return None
