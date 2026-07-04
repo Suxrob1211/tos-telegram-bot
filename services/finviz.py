@@ -48,30 +48,27 @@ class BrowserManager:
 
         self.browser = self.playwright.chromium.launch(
             headless=True,
+            chromium_sandbox=False,
             args=[
                 "--no-sandbox",
-                "--disable-dev-shm-usage",
                 "--disable-setuid-sandbox",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-web-security",
+                "--disable-dev-shm-usage",
                 "--disable-gpu",
-                "--window-size=1600,900",
-                "--start-maximized",
-                "--disable-infobars",
+                "--disable-software-rasterizer",
                 "--disable-extensions",
-                "--lang=en-US",
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-features=site-per-process",
+                "--single-process",
+                "--no-zygote",
+                "--window-size=1600,900",
             ],
         )
 
         self.context = self.browser.new_context(
             viewport={"width": 1600, "height": 900},
             user_agent=USER_AGENT,
-            locale="en-US",
-            timezone_id="America/New_York",
-            color_scheme="dark",
-            device_scale_factor=1,
-            has_touch=False,
-            is_mobile=False,
         )
 
         self.context.add_init_script("""
