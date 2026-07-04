@@ -150,11 +150,15 @@ class FinvizScreenshot:
             "canvas",
         ]
 
-        page.wait_for_load_state("networkidle")
+       # page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(3000)
+        
+        print("Network wait finished")
 
         for _ in range(15):
             for selector in selectors:
                 try:
+                    print(f"Searching: {selector}")
                     element = page.query_selector(selector)
                     if element:
                         box = element.bounding_box()
