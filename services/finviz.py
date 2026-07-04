@@ -144,21 +144,32 @@ class FinvizScreenshot:
             pass
 
     def _wait_chart(self, page: Page):
-        selectors = [
-            "#chart0",
-            "img[src*='chart.ashx']",
-            "img[src*='charts.finviz']",
-            "#charts",
-        ]
 
+    selectors = [
+        "img[src*='chart.ashx']",
+        "img[src*='quote.ashx']",
+        "img[src*='finviz.com/chart']",
+        "img.chart-image",
+        "img",
+        "canvas",
+    ]
+
+    page.wait_for_load_state("networkidle")
+
+    for _ in range(15):
         for selector in selectors:
             try:
-                page.wait_for_selector(selector, timeout=8000)
-                return selector
-            except Exception:
+                element = page.query_selector(selector)
+                if element:
+                    box = element.bounding_box()
+                    if box and box["width"] > 300 and box["height"] > 200:
+                        return selector
+            except:
                 pass
 
-        raise RuntimeError("Chart not found")
+        page.wait_for_timeout(1000)
+
+    raise RuntimeError("Chart not found")
 
     def capture(self, ticker: str) -> Optional[bytes]:
         url = FINVIZ_URL.format(ticker=ticker.upper())
