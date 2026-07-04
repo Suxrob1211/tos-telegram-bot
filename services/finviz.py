@@ -157,10 +157,10 @@ class FinvizScreenshot:
                 page.goto(
                     url,
                     wait_until="domcontentloaded",
-                    timeout=30000,
+                    timeout=15000,
                 )
 
-                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(4000)
                 self._hide_popups(page)
                 selector = self._wait_chart(page)
                 time.sleep(1.5)
