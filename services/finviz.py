@@ -194,22 +194,20 @@ class FinvizScreenshot:
                         f"[Finviz] {ticker} screenshot OK "
                         f"({len(screenshot)//1024} KB)"
                     )
-                    page.close()
                     return screenshot
 
             except Exception as e:
                 print(f"[Finviz] Attempt {attempt+1}/3 failed: {e}")
+                time.sleep(2)
+                if attempt == 2:
+                    browser_manager.restart()
 
+            finally:
                 if page:
                     try:
                         page.close()
                     except Exception:
                         pass
-
-                time.sleep(2)
-
-                if attempt == 2:
-                    browser_manager.restart()
 
         return None
 
