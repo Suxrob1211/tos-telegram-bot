@@ -181,13 +181,29 @@ class FinvizScreenshot:
                     timeout=15000,
                 )
 
+                print("1. goto OK")
+
                 page.wait_for_timeout(4000)
+                
+                print("2. timeout OK")
+                
                 self._hide_popups(page)
+                
+                print("3. hide OK")
+
                 selector = self._wait_chart(page)
+
+                print(f"4. selector = {selector}")
+                
                 time.sleep(1.5)
 
                 chart = page.locator(selector).first
+
+                print("5. locator OK")
+
                 screenshot = chart.screenshot(type="png")
+
+                print("6. screenshot OK")
 
                 if screenshot and len(screenshot) > 10000:
                     print(
