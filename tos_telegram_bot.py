@@ -13,7 +13,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
-from services.finviz_api import get_chart
+from services.chart import get_chart
 
 load_dotenv()
 
@@ -284,15 +284,15 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def get_chart_image(ticker: str) -> bytes | None:
-    try:
+    
         img = get_chart(ticker)
+    
         if img:
-            print(f"[Chart] Playwright OK: {ticker}")
+            print(f"[Chart] Finviz OK: {ticker}")
             return img
-    except Exception as e:
-        print(f"[Playwright] {e}")
 
     print("[Chart] Fallback → matplotlib")
+
     return get_matplotlib_chart(ticker)
 
 def send_telegram_photo(caption: str, ticker: str):
