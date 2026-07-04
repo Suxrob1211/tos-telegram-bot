@@ -60,10 +60,14 @@ class BrowserManager:
         )
 
         self.context = self.browser.new_context(
-            viewport={"width": 1600, "height": 1200},
+            viewport={"width": 1600, "height": 900},
             user_agent=USER_AGENT,
             locale="en-US",
+            timezone_id="America/New_York",
             color_scheme="dark",
+            device_scale_factor=1,
+            has_touch=False,
+            is_mobile=False,
         )
 
         self.context.set_default_timeout(30000)
