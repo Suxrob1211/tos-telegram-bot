@@ -284,15 +284,13 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def get_chart_image(ticker: str) -> bytes | None:
-    
-        img = get_chart(ticker)
+    img = get_chart(ticker)
     
         if img:
             print(f"[Chart] Finviz OK: {ticker}")
             return img
 
     print("[Chart] Fallback → matplotlib")
-
     return get_matplotlib_chart(ticker)
 
 def send_telegram_photo(caption: str, ticker: str):
