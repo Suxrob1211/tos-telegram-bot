@@ -55,7 +55,11 @@ class BrowserManager:
                 "--disable-blink-features=AutomationControlled",
                 "--disable-web-security",
                 "--disable-gpu",
-                "--window-size=1600,1200",
+                "--window-size=1600,900",
+                "--start-maximized",
+                "--disable-infobars",
+                "--disable-extensions",
+                "--lang=en-US",
             ],
         )
 
@@ -69,6 +73,12 @@ class BrowserManager:
             has_touch=False,
             is_mobile=False,
         )
+
+        self.context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+        """)
 
         self.context.set_default_timeout(30000)
         self.last_used = time.time()
