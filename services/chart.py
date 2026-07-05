@@ -30,6 +30,18 @@ class ChartDownloader:
         print("[Chart] Goto finished")
         page.wait_for_timeout(3000)
         print("[Chart] Page ready")
+        
+        print("========== TITLE ==========")
+        print(page.title())
+
+        print("========== URL ==========")
+        print(page.url)
+
+        print("========== BODY ==========")
+        try:
+            print(page.locator("body").inner_text(timeout=5000)[:2000])
+        except Exception as e:
+            print("BODY ERROR:", e)
         return page
 
     def _download_chart(self, page):
