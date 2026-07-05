@@ -27,6 +27,14 @@ def get_chart(ticker: str):
 
         page.goto(url, wait_until="domcontentloaded")
 
+        print("[Chart] Page loaded")
+
         page.wait_for_timeout(3000)
 
-        print("[Chart] Page opened")
+        print("[Chart] Clicking Share")
+
+        page.get_by_role("button", name="Share").click(timeout=10000)
+
+        print("[Chart] Share clicked")
+
+        page.wait_for_timeout(1000)
