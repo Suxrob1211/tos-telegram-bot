@@ -27,14 +27,15 @@ class ChartDownloader:
             wait_until="domcontentloaded",
             timeout=30000,
         )
-        page.wait_for_load_state("networkidle")
+        print("[Chart] Goto finished")
         page.wait_for_timeout(3000)
         print("[Chart] Page ready")
         return page
 
     def _download_chart(self, page):
+        print("[Chart] Enter download_chart")
         print("[Chart] Clicking Share")
-        page.locator("button:has-text('Share')").click()
+        page.locator("text=Share").first.click(timeout=10000)
         page.wait_for_timeout(1000)
 
         print("[Chart] Waiting download...")
