@@ -24,7 +24,7 @@ class BrowserManager:
         self.playwright = sync_playwright().start()
 
         self.browser = self.playwright.chromium.launch(
-            headless=False,
+            headless=True,
             chromium_sandbox=False,
             args=[
                 "--no-sandbox",
