@@ -38,3 +38,23 @@ def get_chart(ticker: str):
         print("[Chart] Share clicked")
 
         page.wait_for_timeout(1000)
+
+        print("[Chart] Waiting download...")
+
+        with page.expect_download(timeout=15000) as download_info:
+            page.get_by_role("button", name="Download").click()
+
+        download = download_info.value
+
+        path = download.path()
+
+        print(f"[Chart] Downloaded: {path}")
+
+        with open(path, "rb") as f:
+            img = f.read()
+
+        print(f"[Chart] Size: {len(img)//1024} KB")
+
+        browser.close()
+
+        return img
