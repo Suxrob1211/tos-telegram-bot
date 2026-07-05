@@ -34,9 +34,27 @@ class ChartDownloader:
 
     def _download_chart(self, page):
         print("[Chart] Enter download_chart")
+        
+        print("========== BEFORE SHARE ==========")
+        for a in page.locator("a").all():
+            try:
+                print(a.inner_text())
+            except:
+                pass
+            print("==================================")
+            
         print("[Chart] Clicking Share")
         page.locator("text=Share").first.click(timeout=10000)
+        
         page.wait_for_timeout(1000)
+
+        print("========== AFTER SHARE ==========")
+        for a in page.locator("a").all():
+            try:
+                print(a.inner_text())
+            except:
+                pass
+                print("=================================")
 
         print("[Chart] Waiting download...")
         with page.expect_download(timeout=15000) as d:
