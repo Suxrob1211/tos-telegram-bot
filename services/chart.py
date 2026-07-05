@@ -58,17 +58,3 @@ def get_chart(ticker: str):
        # browser.close()
 
        # return img
-
-         page.wait_for_timeout(5000)
-
-         print("[Chart] Page loaded")
-
-         print("[Chart] TITLE:", page.title())
-
-         print("[Chart] URL:", page.url)
-
-         print(page.content()[:500])
-
-         browser.close()
-
-         return None
