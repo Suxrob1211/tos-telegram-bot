@@ -291,30 +291,30 @@ def get_chart_image(ticker: str) -> bytes | None:
     
     if img:
         try:
-             image = Image.open(io.BytesIO(img))
-             # 2x kattalashtirish
-        image = image.resize(
+            image = Image.open(io.BytesIO(img))
+            
+            # 2x kattalashtirish
+            image = image.resize(
             (image.width * 2, image.height * 2),
             Image.LANCZOS,
             )
 
-        # Sharpness
-        image = ImageEnhance.Sharpness(image).enhance(1.4)
+            # Sharpness
+            image = ImageEnhance.Sharpness(image).enhance(1.4)
 
-        # Contrast
-        image = ImageEnhance.Contrast(image).enhance(1.05)
+            # Contrast
+            image = ImageEnhance.Contrast(image).enhance(1.05)
 
-        output = io.BytesIO()
-        image.save(output, format="PNG", optimize=True)
+            output = io.BytesIO()
+            image.save(output, format="PNG", optimize=True)
         
-        print(f"[Chart] Finviz HD OK: {ticker}")
+            print(f"[Chart] Finviz HD OK: {ticker}")
         
-        return output.getvalue()
+            return output.getvalue()
 
-    except Exception as e:
-    print(f"[Chart] Pillow error: {e}")
-
-    return img
+        except Exception as e:
+            print(f"[Chart] Pillow error: {e}")
+            return img
 
     print("[Chart] Fallback → matplotlib")
     return get_matplotlib_chart(ticker)
