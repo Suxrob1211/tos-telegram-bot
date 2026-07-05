@@ -14,6 +14,9 @@ import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 from services.chart import get_chart
+from PIL import Image
+from PIL import ImageEnhance
+import io
 
 load_dotenv()
 
@@ -287,8 +290,31 @@ def get_chart_image(ticker: str) -> bytes | None:
     img = get_chart(ticker)
     
     if img:
-        print(f"[Chart] Finviz OK: {ticker}")
-        return img
+        try:
+             image = Image.open(io.BytesIO(img))
+             # 2x kattalashtirish
+        image = image.resize(
+            (image.width * 2, image.height * 2),
+            Image.LANCZOS,
+            )
+
+        # Sharpness
+        image = ImageEnhance.Sharpness(image).enhance(1.4)
+
+        # Contrast
+        image = ImageEnhance.Contrast(image).enhance(1.05)
+
+        output = io.BytesIO()
+        image.save(output, format="PNG", optimize=True)
+        
+        print(f"[Chart] Finviz HD OK: {ticker}")
+        
+        return output.getvalue()
+
+    except Exception as e:
+    print(f"[Chart] Pillow error: {e}")
+
+    return img
 
     print("[Chart] Fallback → matplotlib")
     return get_matplotlib_chart(ticker)
