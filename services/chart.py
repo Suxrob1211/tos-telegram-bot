@@ -1,60 +1,45 @@
-from playwright.sync_api import sync_playwright
 import tempfile
-import os
+from pathlib import Path
+
+from playwright.sync_api import (
+    Error,
+    TimeoutError,
+)
+
+from services.browser import browser_manager
 
 
-def get_chart(ticker: str):
+FINVIZ_URL = (
+    "https://finviz.com/quote.ashx?"
+    "t={ticker}&p=d"
+)
 
-    ticker = ticker.upper()
 
-    url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
+class ChartDownloader:
 
-    with sync_playwright() as p:
+    def __init__(self):
+        browser_manager.start()
 
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-            ],
-        )
+    def _open_page(self, ticker: str):
 
-        page = browser.new_page(
-            viewport={"width": 1700, "height": 1000},
+        page = browser_manager.new_page()
+
+        url = FINVIZ_URL.format(
+            ticker=ticker.upper()
         )
 
         print(f"[Chart] Opening {ticker}")
 
-        page.goto(url, wait_until="domcontentloaded")
+        page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
 
-        print("[Chart] Page loaded")
+        page.wait_for_load_state("networkidle")
 
         page.wait_for_timeout(3000)
 
-        print("[Chart] Clicking Share")
+        print("[Chart] Page ready")
 
-       # page.get_by_role("button", name="Share").click(timeout=10000)
-
-       # print("[Chart] Share clicked")
-
-       # page.wait_for_timeout(1000)
-
-       # print("[Chart] Waiting download...")
-
-       # with page.expect_download(timeout=15000) as download_info:
-           # page.get_by_role("button", name="Download").click()
-
-       # download = download_info.value
-
-       # path = download.path()
-
-       # print(f"[Chart] Downloaded: {path}")
-
-       # with open(path, "rb") as f:
-           # img = f.read()
-
-       # print(f"[Chart] Size: {len(img)//1024} KB")
-
-       # browser.close()
-
-       # return img
+        return page
