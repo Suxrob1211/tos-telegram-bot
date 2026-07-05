@@ -1,63 +1,32 @@
+from playwright.sync_api import sync_playwright
+import tempfile
 import os
-import urllib.parse
-import requests
-
-SCRAPERAPI_KEY = os.getenv("SCRAPERAPI_KEY")
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 Chrome/137.0 Safari/537.36"
-    ),
-    "Referer": "https://finviz.com/",
-    "Accept": "image/png,image/*,*/*",
-}
 
 
 def get_chart(ticker: str):
 
     ticker = ticker.upper()
 
-    finviz = (
-        f"https://charts2.finviz.com/chart.ashx?"
-        f"t={ticker}&ty=c&ta=1&p=d&s=l"
-    )
+    url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
 
-    urls = [
-        finviz,
-    ]
+    with sync_playwright() as p:
 
-    if SCRAPERAPI_KEY:
-        urls.append(
-            "https://api.scraperapi.com/"
-            f"?api_key={SCRAPERAPI_KEY}"
-            f"&url={urllib.parse.quote(finviz,safe='')}"
-            "&render=false"
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
         )
 
-    for url in urls:
+        page = browser.new_page(
+            viewport={"width": 1700, "height": 1000},
+        )
 
-        try:
+        print(f"[Chart] Opening {ticker}")
 
-            r = requests.get(
-                url,
-                headers=HEADERS,
-                timeout=20,
-            )
+        page.goto(url, wait_until="domcontentloaded")
 
-            if r.status_code != 200:
-                print(f"[Chart] HTTP {r.status_code}")
-                continue
+        page.wait_for_timeout(3000)
 
-            if r.content[:8] != b"\x89PNG\r\n\x1a\n":
-                print("[Chart] PNG emas")
-                continue
-
-            print(f"[Chart] Finviz OK ({len(r.content)//1024}KB)")
-            return r.content
-
-        except Exception as e:
-
-            print(f"[Chart] {e}")
-
-    return None
+        print("[Chart] Page opened")
