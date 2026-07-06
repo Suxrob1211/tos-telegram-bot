@@ -35,6 +35,20 @@ class ChartDownloader:
         page.wait_for_timeout(3000)
 
         print("[Chart] Page ready")
+        print("========== PAGE TITLE ==========")
+        print(page.title())
+
+        print("========== CURRENT URL ==========")
+        print(page.url)
+
+        print("========== PAGE BODY ==========")
+        try:
+            print(page.locator("body").inner_text(timeout=5000)[:3000])
+        except Exception as e:
+            print(e)
+
+        page.screenshot(path="page.png", full_page=True)
+        print("[Chart] Screenshot saved")
 
         return page
 
