@@ -8,15 +8,12 @@ import email
 import time
 import re
 import os
+import json
 import requests
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
-from services.chart import get_chart
-from PIL import Image
-from PIL import ImageEnhance
-import io
 
 load_dotenv()
 
@@ -24,6 +21,14 @@ GMAIL_USER       = os.getenv("GMAIL_USER")
 GMAIL_APP_PASS   = os.getenv("GMAIL_APP_PASSWORD")
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+RESULTS_CHAT_ID  = os.getenv("RESULTS_CHAT_ID", "-1004358677830")
+
+# ── Signal tracking sozlamalari ───────────────────────────────────────────────
+TARGET_PCT     = 10.0   # +10% ga yetsa - foydada yopiladi
+STOP_LOSS_PCT  = -5.0   # -5% ga tushsa - zararda yopiladi
+MAX_HOLD_DAYS  = 30     # 30 kundan keyin - muddati tugadi
+SIGNALS_DB     = "signals_db.json"
+LAST_MONTHLY_REPORT_FILE = "last_monthly_report.txt"
 
 TOS_SENDER       = "alerts@thinkorswim.com"
 CHECK_INTERVAL   = 30
@@ -42,10 +47,220 @@ def save_sent_id(msg_id: str):
     with open(SENT_IDS_FILE, "a") as f:
         f.write(msg_id + "\n")
 
+# ── Signal tracking: saqlash va o'qish ───────────────────────────────────────
+def load_signals_db() -> list:
+    if not os.path.exists(SIGNALS_DB):
+        return []
+    try:
+        with open(SIGNALS_DB, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[DB xato] o'qishda: {e}")
+        return []
+
+def save_signals_db(signals: list):
+    try:
+        with open(SIGNALS_DB, "w") as f:
+            json.dump(signals, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[DB xato] yozishda: {e}")
+
+def add_signal_to_tracking(ticker: str, scanner_name: str, entry_price: float):
+    """Yangi signalni kuzatuv bazasiga qo'shadi."""
+    if entry_price <= 0:
+        return
+    signals = load_signals_db()
+    signals.append({
+        "ticker": ticker,
+        "scanner": scanner_name,
+        "entry_price": entry_price,
+        "entry_date": datetime.now().strftime("%Y-%m-%d"),
+        "entry_datetime": datetime.now().isoformat(),
+        "status": "open",           # open | profit | loss | expired
+        "exit_price": None,
+        "exit_date": None,
+        "pct_change": None,
+    })
+    save_signals_db(signals)
+    print(f"[Tracking] {ticker} kuzatuvga qo'shildi (kirish: ${entry_price:.2f})")
+
+# ── Signal tracking: kunlik tekshiruv ────────────────────────────────────────
+def check_open_signals() -> dict:
+    """
+    Barcha 'open' signallarni tekshiradi:
+    +10% -> profit, -5% -> loss, 30 kun -> expired.
+    Qaytadi: {'closed_today': [...], 'still_open': N}
+    """
+    signals = load_signals_db()
+    closed_today = []
+    still_open = 0
+
+    for sig in signals:
+        if sig["status"] != "open":
+            continue
+
+        ticker = sig["ticker"]
+        try:
+            stock = yf.Ticker(ticker)
+            info  = stock.info
+            price = float(
+                info.get("currentPrice") or
+                info.get("regularMarketPrice") or 0.0
+            )
+        except Exception as e:
+            print(f"[Tracking xato] {ticker}: {e}")
+            still_open += 1
+            continue
+
+        if price <= 0:
+            still_open += 1
+            continue
+
+        entry_price = sig["entry_price"]
+        pct = (price - entry_price) / entry_price * 100
+
+        entry_date = datetime.strptime(sig["entry_date"], "%Y-%m-%d")
+        days_held  = (datetime.now() - entry_date).days
+
+        new_status = None
+        if pct >= TARGET_PCT:
+            new_status = "profit"
+        elif pct <= STOP_LOSS_PCT:
+            new_status = "loss"
+        elif days_held >= MAX_HOLD_DAYS:
+            new_status = "expired"
+
+        if new_status:
+            sig["status"]      = new_status
+            sig["exit_price"]  = round(price, 2)
+            sig["exit_date"]   = datetime.now().strftime("%Y-%m-%d")
+            sig["pct_change"]  = round(pct, 2)
+            closed_today.append(sig)
+            print(f"[Tracking] {ticker} yopildi: {new_status} ({pct:+.2f}%)")
+        else:
+            still_open += 1
+
+    save_signals_db(signals)
+    return {"closed_today": closed_today, "still_open": still_open}
+
+def send_daily_tracking_report():
+    """Kunlik natija xabarini 'Signals Natija' kanaliga yuboradi."""
+    result = check_open_signals()
+    closed = result["closed_today"]
+    still_open = result["still_open"]
+
+    if not closed and still_open == 0:
+        return  # kuzatuv bazasi bo'sh, xabar yubormaymiz
+
+    lines = [f"📅 <b>Kunlik hisobot — {datetime.now().strftime('%d-%b-%Y')}</b>\n"]
+
+    if closed:
+        lines.append(f"🔔 <b>Bugun yopilgan signallar ({len(closed)}):</b>")
+        for sig in closed:
+            emoji = "✅" if sig["status"] == "profit" else ("❌" if sig["status"] == "loss" else "⏱")
+            status_text = {"profit": "Foydada", "loss": "Zararda", "expired": "Muddati tugadi"}[sig["status"]]
+            lines.append(
+                f"{emoji} <code>{sig['ticker']}</code> — {status_text} "
+                f"({sig['pct_change']:+.2f}%) | Kirish: ${sig['entry_price']:.2f} → Chiqish: ${sig['exit_price']:.2f} "
+                f"| Scanner: {sig['scanner']}"
+            )
+        lines.append("")
+
+    lines.append(f"📊 Hozir kuzatilayotgan (ochiq) signallar: <b>{still_open}</b> ta")
+
+    send_telegram_text_to("\n".join(lines), RESULTS_CHAT_ID)
+    print(f"[Kunlik hisobot] yuborildi ({len(closed)} yopilgan, {still_open} ochiq)")
+
+def send_monthly_tracking_report():
+    """Oy oxirida umumiy statistika chiqaradi."""
+    signals = load_signals_db()
+    now = datetime.now()
+    month_str = now.strftime("%Y-%m")
+
+    month_signals = [
+        s for s in signals
+        if s["entry_date"].startswith(month_str)
+    ]
+
+    if not month_signals:
+        return
+
+    total = len(month_signals)
+    profit_count  = sum(1 for s in month_signals if s["status"] == "profit")
+    loss_count    = sum(1 for s in month_signals if s["status"] == "loss")
+    expired_count = sum(1 for s in month_signals if s["status"] == "expired")
+    open_count    = sum(1 for s in month_signals if s["status"] == "open")
+
+    closed_signals = [s for s in month_signals if s["pct_change"] is not None]
+    avg_pct = sum(s["pct_change"] for s in closed_signals) / len(closed_signals) if closed_signals else 0
+
+    # Scanner bo'yicha guruhlash
+    by_scanner = {}
+    for s in month_signals:
+        by_scanner.setdefault(s["scanner"], []).append(s)
+
+    lines = [
+        f"📈 <b>Oylik xulosa — {now.strftime('%B %Y')}</b>\n",
+        f"Jami signallar: <b>{total}</b>",
+        f"✅ Foydada yopilgan: <b>{profit_count}</b>",
+        f"❌ Zararda yopilgan: <b>{loss_count}</b>",
+        f"⏱ Muddati tugagan: <b>{expired_count}</b>",
+        f"📊 Hali ochiq: <b>{open_count}</b>",
+        f"💰 O'rtacha natija: <b>{avg_pct:+.2f}%</b>\n",
+        f"📋 <b>Scanner bo'yicha taqsimot:</b>",
+    ]
+    for scanner, sigs in by_scanner.items():
+        s_profit = sum(1 for s in sigs if s["status"] == "profit")
+        lines.append(f"• {scanner}: {len(sigs)} ta signal, {s_profit} ta foydada")
+
+    send_telegram_text_to("\n".join(lines), RESULTS_CHAT_ID)
+    print(f"[Oylik hisobot] yuborildi ({total} signal)")
+
+def check_and_send_monthly_report():
+    """Har oy 1-sanasida (yoki oxirgi kunida) bir marta oylik hisobot yuboradi."""
+    now = datetime.now()
+    last_sent = ""
+    if os.path.exists(LAST_MONTHLY_REPORT_FILE):
+        with open(LAST_MONTHLY_REPORT_FILE, "r") as f:
+            last_sent = f.read().strip()
+
+    current_month = now.strftime("%Y-%m")
+    # Oyning 1-kuni va hali shu oy uchun yubormagan bo'lsa
+    if now.day == 1 and last_sent != current_month:
+        send_monthly_tracking_report()
+        with open(LAST_MONTHLY_REPORT_FILE, "w") as f:
+            f.write(current_month)
+
 ALREADY_SENT = load_sent_ids()
 
 # ── Finviz grafik (proksi orqali) ────────────────────────────────────────────
 SCRAPERAPI_KEY = os.getenv("SCRAPERAPI_KEY", "25a1884447a69ac9773958347c108f59")
+
+def get_finviz_screenshot(ticker: str) -> bytes | None:
+    """
+    ScraperAPI'ning render=true xizmati orqali Finviz quote sahifasini
+    to'liq brauzerda ochib, screenshot oladi.
+    """
+    quote_url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
+    api_url = (
+        f"https://api.scraperapi.com/"
+        f"?api_key={SCRAPERAPI_KEY}"
+        f"&url={quote_url}"
+        f"&render=true"
+        f"&screenshot=true"
+        f"&device_type=desktop"
+        f"&window_width=1200"
+        f"&window_height=900"
+    )
+    try:
+        resp = requests.get(api_url, timeout=90)
+        if resp.status_code == 200 and resp.content[:4] == b'\x89PNG':
+            print(f"[Finviz screenshot] {ticker} olindi ({len(resp.content)//1024}KB)")
+            return resp.content
+        print(f"[Finviz screenshot] muvaffaqiyatsiz (status={resp.status_code}, size={len(resp.content)})")
+    except Exception as e:
+        print(f"[Finviz screenshot xato] {e}")
+    return None
 
 def get_finviz_via_proxy(ticker: str) -> bytes | None:
     """ScraperAPI (asosiy) + bepul proksilar (zaxira) orqali Finviz grafigini oladi."""
@@ -55,7 +270,6 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
     encoded = urllib.parse.quote(finviz_url, safe="")
 
     proxies = [
-        f"https://api.scraperapi.com/?api_key={SCRAPERAPI_KEY}&url={finviz_url}&render=false",
         f"https://api.allorigins.win/raw?url={encoded}",
         f"https://api.codetabs.com/v1/proxy?quest={finviz_url}",
     ]
@@ -68,8 +282,7 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
 
     for i, proxy_url in enumerate(proxies):
         try:
-            proxy_timeout = 40 if "scraperapi" in proxy_url else 20
-            resp = requests.get(proxy_url, headers=headers, timeout=proxy_timeout)
+            resp = requests.get(proxy_url, headers=headers, timeout=20)
             if resp.status_code == 200 and resp.content[:4] == b'\x89PNG':
                 print(f"[Finviz proksi #{i+1}] {ticker} grafigi olindi ({len(resp.content)} bayt)")
                 return resp.content
@@ -287,36 +500,15 @@ def build_message(ticker: str, scanner_name: str) -> tuple:
 
 # ── Telegram ─────────────────────────────────────────────────────────────────
 def get_chart_image(ticker: str) -> bytes | None:
-    img = get_chart(ticker)
-    
+    """1. ScraperAPI screenshot   2. Finviz proksi   3. Matplotlib (zaxira)"""
+    img = get_finviz_screenshot(ticker)
     if img:
-        try:
-            image = Image.open(io.BytesIO(img))
-            
-            # 2x kattalashtirish
-            image = image.resize(
-            (image.width * 2, image.height * 2),
-            Image.LANCZOS,
-            )
-
-            # Sharpness
-            image = ImageEnhance.Sharpness(image).enhance(1.4)
-
-            # Contrast
-            image = ImageEnhance.Contrast(image).enhance(1.05)
-
-            output = io.BytesIO()
-            image.save(output, format="PNG", optimize=True)
-        
-            print(f"[Chart] Finviz HD OK: {ticker}")
-        
-            return output.getvalue()
-
-        except Exception as e:
-            print(f"[Chart] Pillow error: {e}")
-            return img
-
-    print("[Chart] Fallback → matplotlib")
+        return img
+    print(f"[Chart] Screenshot ishlamadi, oddiy proksi sinalmoqda...")
+    img = get_finviz_via_proxy(ticker)
+    if img:
+        return img
+    print(f"[Chart] Finviz ishlamadi, matplotlib bilan yasalmoqda...")
     return get_matplotlib_chart(ticker)
 
 def send_telegram_photo(caption: str, ticker: str):
@@ -341,9 +533,12 @@ def send_telegram_photo(caption: str, ticker: str):
     send_telegram_text(caption)
 
 def send_telegram_text(text: str):
+    send_telegram_text_to(text, TELEGRAM_CHAT_ID)
+
+def send_telegram_text_to(text: str, chat_id: str):
     url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     resp = requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
+        "chat_id": chat_id, "text": text, "parse_mode": "HTML",
     }, timeout=15)
     if not resp.ok:
         print(f"[Telegram matn xato] {resp.text}")
@@ -426,6 +621,9 @@ def check_email():
                             continue
                         send_telegram_photo(caption, ticker)
                         print(f"[Telegram] {ticker} yuborildi ✅")
+                        d = get_stock_info(ticker)
+                        if d and d.get("price", 0) > 0:
+                            add_signal_to_tracking(ticker, scanner_name, d["price"])
                         time.sleep(2)
                     ALREADY_SENT.add(msg_id)
                     save_sent_id(msg_id)
@@ -442,6 +640,9 @@ def check_email():
                     continue
                 send_telegram_photo(caption, ticker)
                 print(f"[Telegram] {ticker} yuborildi ✅")
+                d = get_stock_info(ticker)
+                if d and d.get("price", 0) > 0:
+                    add_signal_to_tracking(ticker, scanner_name, d["price"])
                 time.sleep(2)
 
             ALREADY_SENT.add(msg_id)
@@ -461,9 +662,30 @@ if __name__ == "__main__":
     print("🚀 TOS → Telegram bot v5 ishga tushdi!")
     print(f"   Gmail: {GMAIL_USER}")
     print(f"   Kanal: {TELEGRAM_CHAT_ID}")
+    print(f"   Natija kanali: {RESULTS_CHAT_ID}")
     print(f"   Har {CHECK_INTERVAL}s tekshiradi...")
-    print(f"   Filter: RVol>={MIN_RVOL}, RSI {RSI_MIN}-{RSI_MAX}\n")
+    print(f"   Filter: RVol>={MIN_RVOL}, RSI {RSI_MIN}-{RSI_MAX}")
+    print(f"   Tracking: Target +{TARGET_PCT}%, Stop {STOP_LOSS_PCT}%, Max {MAX_HOLD_DAYS} kun\n")
+
+    last_daily_report_date = ""
 
     while True:
         check_email()
+
+        # Kunlik hisobot — har kuni bir marta (masalan 22:00 dan keyin)
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        if now.hour >= 22 and last_daily_report_date != today_str:
+            try:
+                send_daily_tracking_report()
+            except Exception as e:
+                print(f"[Kunlik hisobot xato] {e}")
+            last_daily_report_date = today_str
+
+        # Oylik hisobot — oyning 1-kunida bir marta
+        try:
+            check_and_send_monthly_report()
+        except Exception as e:
+            print(f"[Oylik hisobot xato] {e}")
+
         time.sleep(CHECK_INTERVAL)
