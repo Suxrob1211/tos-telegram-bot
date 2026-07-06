@@ -25,14 +25,7 @@ class BrowserManager:
 
         self.playwright = sync_playwright().start()
 
-        # Railway aniqlash
         is_railway = os.getenv("RAILWAY_ENVIRONMENT") is not None
-
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-dev-shm-usage",
-            "--no-sandbox",
-        ]
 
         if is_railway:
 
@@ -40,7 +33,12 @@ class BrowserManager:
 
             self.browser = self.playwright.chromium.launch(
                 headless=True,
-                args=launch_args,
+                channel=None,
+                args=[
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                ],
             )
 
         else:
@@ -52,17 +50,15 @@ class BrowserManager:
                 headless=False,
                 args=[
                     "--start-maximized",
-                    *launch_args,
+                    "--disable-blink-features=AutomationControlled",
                 ],
             )
 
-        self.browser = self.playwright.chromium.launch(
-            channel="chrome",
-            headless=False,
-            args=[
-                "--start-maximized",
-                *launch_args,
-            ],
+        self.context = self.browser.new_context(
+            viewport={"width": 1700, "height": 1000},
+            locale="en-US",
+            timezone_id="America/New_York",
+            accept_downloads=True,
         )
 
         self.context.set_default_timeout(30000)
@@ -77,7 +73,6 @@ class BrowserManager:
     def close(self):
 
         try:
-
             if self.context:
                 self.context.close()
 
