@@ -56,11 +56,13 @@ class BrowserManager:
                 ],
             )
 
-        self.context = self.browser.new_context(
-            viewport={"width": 1700, "height": 1000},
-            locale="en-US",
-            timezone_id="America/New_York",
-            accept_downloads=True,
+        self.browser = self.playwright.chromium.launch(
+            channel="chrome",
+            headless=False,
+            args=[
+                "--start-maximized",
+                *launch_args,
+            ],
         )
 
         self.context.set_default_timeout(30000)
