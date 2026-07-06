@@ -1,4 +1,6 @@
+import os
 import threading
+
 from playwright.sync_api import sync_playwright
 
 
@@ -18,26 +20,41 @@ class BrowserManager:
 
     def start(self):
 
-        if self.browser is not None:
+        if self.browser:
             return
-
-        print("[Browser] Starting Chrome...")
 
         self.playwright = sync_playwright().start()
 
-        self.browser = self.playwright.chromium.launch(
-            channel="chrome",
-            headless=False,
-            args=[
-                "--start-maximized",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-gpu",
-                "--disable-infobars",
-                "--disable-extensions",
-            ],
-        )
+        # Railway aniqlash
+        is_railway = os.getenv("RAILWAY_ENVIRONMENT") is not None
+
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+        ]
+
+        if is_railway:
+
+            print("[Browser] Railway mode")
+
+            self.browser = self.playwright.chromium.launch(
+                headless=True,
+                args=launch_args,
+            )
+
+        else:
+
+            print("[Browser] Windows mode")
+
+            self.browser = self.playwright.chromium.launch(
+                channel="chrome",
+                headless=False,
+                args=[
+                    "--start-maximized",
+                    *launch_args,
+                ],
+            )
 
         self.context = self.browser.new_context(
             viewport={"width": 1700, "height": 1000},
@@ -48,52 +65,32 @@ class BrowserManager:
 
         self.context.set_default_timeout(30000)
 
-        print("[Browser] Ready")
-
     def new_page(self):
 
-        if self.browser is None:
+        if not self.browser:
             self.start()
 
-        page = self.context.new_page()
-
-        page.set_default_timeout(30000)
-
-        return page
-
-    def restart(self):
-
-        print("[Browser] Restarting...")
-
-        self.close()
-
-        self.start()
+        return self.context.new_page()
 
     def close(self):
 
         try:
+
             if self.context:
                 self.context.close()
-        except Exception:
-            pass
 
-        try:
             if self.browser:
                 self.browser.close()
-        except Exception:
-            pass
 
-        try:
             if self.playwright:
                 self.playwright.stop()
+
         except Exception:
             pass
 
         self.context = None
         self.browser = None
         self.playwright = None
-
-        print("[Browser] Closed")
 
 
 browser_manager = BrowserManager()
