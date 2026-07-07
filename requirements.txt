@@ -1,7 +1,3 @@
 requests
 yfinance
 python-dotenv
-pandas
-matplotlib
-playwright
-Pillow
