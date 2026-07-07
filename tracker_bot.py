@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN")
-SIGNAL_CHAT_ID   = os.getenv("SIGNAL_CHAT_ID")       # "ThinkorSwim Signal" kanali
+SIGNAL_CHAT_ID   = os.getenv("SIGNAL_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")   # "ThinkorSwim Signal" kanali
 RESULTS_CHAT_ID  = os.getenv("RESULTS_CHAT_ID", "-1004358677830")  # "Signals Natija" kanali
 
 CHECK_INTERVAL   = 60     # 60 sekundda yangi xabarlarni tekshiradi
