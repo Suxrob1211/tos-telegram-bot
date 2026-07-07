@@ -7,8 +7,8 @@ Bu bot Gmail bilan ishlamaydi — faqat Telegram orqali signal xabarlarini
 o'qiydi (getUpdates API) va Yahoo Finance orqali narxlarni kuzatadi.
 
 Muhit o'zgaruvchilari (.env yoki Railway Variables):
-    TELEGRAM_BOT_TOKEN=...
-    SIGNAL_CHAT_ID=-100...      (ThinkorSwim Signal kanali ID si)
+    TELEGRAM_BOT_TOKEN=8775813882:AAHj3LglkomUa0Gjfe8lwliTfmoraIwGmfw
+    SIGNAL_CHAT_ID=-1003942860549      (ThinkorSwim Signal kanali ID si)
     RESULTS_CHAT_ID=-1004358677830   (Signals Natija kanali ID si)
 """
 
@@ -139,7 +139,7 @@ def parse_signal_message(text: str) -> dict | None:
 def poll_telegram_updates():
     """Telegram getUpdates orqali kanaldagi yangi postlarni oladi."""
     last_id = load_last_update_id()
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    url = f"https://api.telegram.org/bot{TELEGRAM_8775813882:AAHj3LglkomUa0Gjfe8lwliTfmoraIwGmfw}/getUpdates"
     params = {"offset": last_id + 1, "timeout": 10, "allowed_updates": '["channel_post"]'}
 
     try:
