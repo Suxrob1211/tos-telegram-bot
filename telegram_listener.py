@@ -1,10 +1,11 @@
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 
 from config import (
     API_ID,
     API_HASH,
-    SESSION_NAME,
-    SIGNAL_CHAT_ID,
+    STRING_SESSION,
+    SIGNAL_CHAT_ID
 )
 
 from parser import parse_signal_message
@@ -12,7 +13,7 @@ from database import add_signal
 
 
 client = TelegramClient(
-    SESSION_NAME,
+    StringSession(STRING_SESSION),
     API_ID,
     API_HASH
 )
@@ -51,6 +52,8 @@ async def start_listener():
     print(f"📡 Kanal: {SIGNAL_CHAT_ID}")
     print("=" * 70)
 
-    await client.start()
-
-    await client.run_until_disconnected()
+    client.start()
+    
+    print("✅ Telethon avtorizatsiya qilindi.")
+    
+    client.run_until_disconnected()
