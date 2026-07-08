@@ -65,12 +65,11 @@ async def report_loop():
                 last_month = month
 
         except Exception as e:
-
             print(f"[Report] {e}")
-
-                await asyncio.sleep(60)
+                
+        await asyncio.sleep(60)
             
-        async def main():
+async def main():
 
     print("=" * 70)
     print("🚀 TOS SIGNAL TRACKER")
@@ -81,9 +80,7 @@ async def report_loop():
         await start_listener()
 
     except Exception as e:
-
         print(f"❌ Listener xatosi: {e}")
-
         return
 
     print("✅ Listener tayyor.")
@@ -102,27 +99,21 @@ async def report_loop():
     try:
 
         await asyncio.gather(
-
             tracking_task,
             report_task,
 
         )
 
     except KeyboardInterrupt:
-
         print("Dastur to'xtatildi.")
 
     except Exception as e:
-
         print(f"Asosiy xato: {e}")
 
 
 if __name__ == "__main__":
-
     try:
-
         asyncio.run(main())
 
     except KeyboardInterrupt:
-
         print("Bot to'xtadi.")
