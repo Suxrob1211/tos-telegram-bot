@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from datetime import datetime
 
 from config import SIGNALS_DB
@@ -54,6 +55,8 @@ def add_signal(ticker, scanner, entry_price):
     signals = load_signals()
 
     signals.append({
+        "id": str(uuid.uuid4()),
+        
         "ticker": ticker,
         "scanner": scanner,
         "entry_price": round(float(entry_price), 2),
@@ -93,15 +96,12 @@ def update_signal(updated_signal):
     signals = load_signals()
 
     for i, signal in enumerate(signals):
-        if (
-            signal["ticker"] == updated_signal["ticker"]
-            and signal["entry_datetime"] == updated_signal["entry_datetime"]
-        ):
+
+        if signal["id"] == updated_signal["id"]:
+
             signals[i] = updated_signal
             break
-
-    save_signals(signals)
-
+    save_signals(signals)        
 
 def close_signal(signal, exit_price, pct_change, status):
     """Signalni yopadi."""
