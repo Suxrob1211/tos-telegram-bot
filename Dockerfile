@@ -6,4 +6,4 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
-CMD ["python", "tracker_bot.py"]
+CMD ["python", "telegram_listener.py"]
