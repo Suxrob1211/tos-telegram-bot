@@ -52,8 +52,9 @@ async def start_listener():
     print(f"📡 Kanal: {SIGNAL_CHAT_ID}")
     print("=" * 70)
 
-    client.start()
+    await client.connect()
     
-    print("✅ Telethon avtorizatsiya qilindi.")
+    if not await client.is_user_authorized():
+        raise RuntimeError("Telethon avtorizatsiya qilinmagan.")
     
-    client.run_until_disconnected()
+    print("✅ Telethon ulandi.")
