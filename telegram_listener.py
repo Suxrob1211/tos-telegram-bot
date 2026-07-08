@@ -1,25 +1,58 @@
-import os
 from telethon import TelegramClient, events
-from dotenv import load_dotenv
 
-load_dotenv()
+from config import (
+    API_ID,
+    API_HASH,
+    SESSION_NAME,
+    SIGNAL_CHAT_ID
+)
 
-API_ID = int(os.getenv("TELEGRAM_API_ID"))
-API_HASH = os.getenv("TELEGRAM_API_HASH")
+from parser import parse_signal_message
+from database import add_signal
 
-client = TelegramClient("tracker_session", API_ID, API_HASH)
 
-@client.on(events.NewMessage)
-async def handler(event):
-    chat = await event.get_chat()
+client = TelegramClient(
+    SESSION_NAME,
+    API_ID,
+    API_HASH
+)
 
-    print("=" * 60)
-    print("YANGI XABAR KELDI")
-    print("CHAT ID:", event.chat_id)
-    print("TEXT:")
-    print(event.raw_text)
-    print("=" * 60)
 
-client.start()
-print("Telethon ishga tushdi...")
-client.run_until_disconnected()
+@client.on(events.NewMessage(chats=SIGNAL_CHAT_ID))
+async def new_signal(event):
+
+    text = event.raw_text
+
+    print("=" * 70)
+    print("📨 Yangi signal keldi")
+    print(text)
+    print("=" * 70)
+
+    parsed = parse_signal_message(text)
+
+    if parsed is None:
+        print("⚠️ Signal formati mos emas.")
+        return
+
+    success = add_signal(
+        parsed["ticker"],
+        parsed["scanner"],
+        parsed["price"]
+    )
+
+    if success:
+        print(f"✅ {parsed['ticker']} kuzatuvga qo'shildi")
+    else:
+        print(f"ℹ️ {parsed['ticker']} bugun allaqachon mavjud")
+
+
+def start_listener():
+
+    print("=" * 70)
+    print("🚀 Telethon ishga tushdi")
+    print(f"📡 Kanal ID: {SIGNAL_CHAT_ID}")
+    print("=" * 70)
+
+    client.start()
+
+    client.run_until_disconnected()
