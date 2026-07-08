@@ -1,15 +1,12 @@
 from datetime import datetime
-
 import requests
 
 from config import (
     BOT_TOKEN,
-    RESULTS_CHAT_ID
+    RESULTS_CHAT_ID,
 )
 
-from database import (
-    get_all_signals
-)
+from database import get_all_signals
 
 
 # --------------------------------------------------------
@@ -27,17 +24,17 @@ def send_message(text):
             json={
                 "chat_id": RESULTS_CHAT_ID,
                 "text": text,
-                "parse_mode": "HTML"
+                "parse_mode": "HTML",
             },
-            timeout=20
+            timeout=20,
         )
 
-    if not response.ok:
-        print(response.text)
+        if not response.ok:
+            print("[Telegram Error]")
+            print(response.text)
 
     except Exception as e:
-
-        print(e)
+        print(f"[Telegram] {e}")
 
 
 # --------------------------------------------------------
@@ -50,31 +47,19 @@ def send_daily_report():
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    today_closed = []
-
-    for signal in signals:
-
-        if signal["exit_date"] == today:
-
-            today_closed.append(signal)
+    today_closed = [
+        s for s in signals
+        if s.get("exit_date") == today
+    ]
 
     if not today_closed:
-
         print("Bugun yopilgan signal yo'q.")
-
         return
 
-    lines = []
-
-    lines.append(
-        f"📅 <b>Kunlik hisobot</b>\n"
+    text = (
+        "📅 <b>Kunlik hisobot</b>\n"
+        f"{datetime.now().strftime('%d-%b-%Y')}\n\n"
     )
-
-    lines.append(
-        datetime.now().strftime("%d-%b-%Y")
-    )
-
-    lines.append("")
 
     for signal in today_closed:
 
@@ -82,22 +67,20 @@ def send_daily_report():
 
         if status == "profit":
             emoji = "✅"
-
         elif status == "loss":
             emoji = "❌"
-
         else:
             emoji = "⏳"
 
-        lines.append(
+        text += (
             f"{emoji} "
             f"<code>{signal['ticker']}</code> "
-            f"{signal['pct_change']:+.2f}%"
+            f"{signal['pct_change']:+.2f}%\n"
         )
 
-    send_message("\n".join(lines))
+    send_message(text)
 
-    print("Kunlik hisobot yuborildi.")
+    print("✅ Kunlik hisobot yuborildi.")
 
 
 # --------------------------------------------------------
@@ -110,63 +93,52 @@ def send_monthly_report():
 
     month = datetime.now().strftime("%Y-%m")
 
-    month_signals = []
-
-    for signal in signals:
-
-        if signal["entry_date"].startswith(month):
-
-            month_signals.append(signal)
+    month_signals = [
+        s for s in signals
+        if s["entry_date"].startswith(month)
+    ]
 
     if not month_signals:
-
         return
 
     total = len(month_signals)
 
-    profit = 0
-    loss = 0
-    expired = 0
-    open_count = 0
+    profit = sum(
+        1 for s in month_signals
+        if s["status"] == "profit"
+    )
 
-    for signal in month_signals:
+    loss = sum(
+        1 for s in month_signals
+        if s["status"] == "loss"
+    )
 
-        if signal["status"] == "profit":
-            profit += 1
+    expired = sum(
+        1 for s in month_signals
+        if s["status"] == "expired"
+    )
 
-        elif signal["status"] == "loss":
-            loss += 1
-
-        elif signal["status"] == "expired":
-            expired += 1
-
-        else:
-            open_count += 1
+    open_count = sum(
+        1 for s in month_signals
+        if s["status"] == "open"
+    )
 
     closed = [
-        s
-        for s in month_signals
+        s for s in month_signals
         if s["pct_change"] is not None
     ]
 
     if closed:
-
-        avg = (
-            sum(
-                s["pct_change"]
-                for s in closed
-            )
-            / len(closed)
-        )
-
+        avg = sum(
+            s["pct_change"] for s in closed
+        ) / len(closed)
     else:
-
         avg = 0
 
     text = f"""
 📈 <b>Oylik hisobot</b>
 
-Jami signal: <b>{total}</b>
+📊 Jami signal: <b>{total}</b>
 
 ✅ Profit: <b>{profit}</b>
 
@@ -174,7 +146,7 @@ Jami signal: <b>{total}</b>
 
 ⏳ Expired: <b>{expired}</b>
 
-📊 Ochiq: <b>{open_count}</b>
+📌 Ochiq: <b>{open_count}</b>
 
 💰 O'rtacha natija:
 <b>{avg:+.2f}%</b>
@@ -182,4 +154,4 @@ Jami signal: <b>{total}</b>
 
     send_message(text)
 
-    print("Oylik hisobot yuborildi.")
+    print("✅ Oylik hisobot yuborildi.")
