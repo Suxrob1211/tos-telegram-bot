@@ -68,7 +68,8 @@ async def report_loop():
 
             print(f"[Report] {e}")
 
-        await asyncio.sleep(60)
+                await asyncio.sleep(60)
+            
         async def main():
 
     print("=" * 70)
