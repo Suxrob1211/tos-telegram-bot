@@ -22,7 +22,7 @@ def send_message(text):
 
     try:
 
-        requests.post(
+        response = requests.post(
             url,
             json={
                 "chat_id": RESULTS_CHAT_ID,
@@ -31,6 +31,9 @@ def send_message(text):
             },
             timeout=20
         )
+
+    if not response.ok:
+        print(response.text)
 
     except Exception as e:
 
