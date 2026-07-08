@@ -18,7 +18,6 @@ client = TelegramClient(
     API_HASH
 )
 
-
 @client.on(events.NewMessage(chats=SIGNAL_CHAT_ID))
 async def new_signal(event):
 
