@@ -4,7 +4,7 @@ from config import (
     API_ID,
     API_HASH,
     SESSION_NAME,
-    SIGNAL_CHAT_ID
+    SIGNAL_CHAT_ID,
 )
 
 from parser import parse_signal_message
@@ -24,35 +24,33 @@ async def new_signal(event):
     text = event.raw_text
 
     print("=" * 70)
-    print("📨 Yangi signal keldi")
+    print("📨 YANGI SIGNAL")
     print(text)
     print("=" * 70)
 
     parsed = parse_signal_message(text)
 
     if parsed is None:
-        print("⚠️ Signal formati mos emas.")
+        print("⚠️ Parse bo'lmadi.")
         return
 
-    success = add_signal(
+    if add_signal(
         parsed["ticker"],
         parsed["scanner"],
         parsed["price"]
-    )
-
-    if success:
-        print(f"✅ {parsed['ticker']} kuzatuvga qo'shildi")
+    ):
+        print(f"✅ {parsed['ticker']} qo'shildi")
     else:
-        print(f"ℹ️ {parsed['ticker']} bugun allaqachon mavjud")
+        print(f"ℹ️ {parsed['ticker']} mavjud")
 
 
-def start_listener():
+async def start_listener():
 
     print("=" * 70)
     print("🚀 Telethon ishga tushdi")
-    print(f"📡 Kanal ID: {SIGNAL_CHAT_ID}")
+    print(f"📡 Kanal: {SIGNAL_CHAT_ID}")
     print("=" * 70)
 
-    client.start()
+    await client.start()
 
-    client.run_until_disconnected()
+    await client.run_until_disconnected()
