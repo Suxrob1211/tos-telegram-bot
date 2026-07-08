@@ -5,13 +5,15 @@ import yfinance as yf
 from config import (
     TARGET_PCT,
     STOP_LOSS_PCT,
-    MAX_HOLD_DAYS
+    MAX_HOLD_DAYS,
 )
 
 from database import (
     get_open_signals,
-    close_signal
+    close_signal,
 )
+
+from reports import send_closed_signal
 
 
 def get_current_price(ticker: str):
@@ -59,7 +61,6 @@ def check_signals():
         current_price = get_current_price(ticker)
 
         if current_price is None:
-
             continue
 
         entry_price = signal["entry_price"]
@@ -74,6 +75,8 @@ def check_signals():
             - datetime.fromisoformat(signal["entry_datetime"])
         ).days
 
+        # ---------------- TARGET ----------------
+
         if pct >= TARGET_PCT:
 
             close_signal(
@@ -83,9 +86,13 @@ def check_signals():
                 "profit"
             )
 
+            send_closed_signal(signal)
+
             closed_today.append(signal)
 
             continue
+
+        # ---------------- STOP LOSS ----------------
 
         if pct <= STOP_LOSS_PCT:
 
@@ -96,9 +103,13 @@ def check_signals():
                 "loss"
             )
 
+            send_closed_signal(signal)
+
             closed_today.append(signal)
 
             continue
+
+        # ---------------- MAX HOLD ----------------
 
         if days >= MAX_HOLD_DAYS:
 
@@ -108,6 +119,8 @@ def check_signals():
                 pct,
                 "expired"
             )
+
+            send_closed_signal(signal)
 
             closed_today.append(signal)
 
