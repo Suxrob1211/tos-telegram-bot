@@ -144,7 +144,15 @@ def poll_telegram_updates():
 
     try:
         resp = requests.get(url, params=params, timeout=20)
+
+        print("=" * 60)
+        print("HTTP Status:", resp.status_code)
+        print("Response:")
+        print(resp.text)
+        print("=" * 60)
+        
         data = resp.json()
+        
     except Exception as e:
         print(f"[Telegram poll xato] {e}")
         return
@@ -154,7 +162,13 @@ def poll_telegram_updates():
         return
 
     updates = data.get("result", [])
-    if not updates:
+
+    print(f"Updates soni: {len(updates)}")
+    
+    if updates:
+        print(json.dumps(updates, indent=2, ensure_ascii=False))
+
+    if not updates:    
         return
 
     new_signals_count = 0
