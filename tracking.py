@@ -20,12 +20,12 @@ def get_current_price(ticker: str):
 
         stock = yf.Ticker(ticker)
 
-        info = stock.info
+        fast = stock.fast_info
 
         price = (
-            info.get("currentPrice")
-            or info.get("regularMarketPrice")
-            or info.get("previousClose")
+            fast.get("lastPrice")
+            or fast.get("regularMarketPrice")
+            or fast.get("previousClose")
         )
 
         if price is None:
