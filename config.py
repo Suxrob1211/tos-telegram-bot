@@ -10,11 +10,11 @@ RESULTS_CHAT_ID = int(os.getenv("RESULTS_CHAT_ID"))
 
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
+STRING_SESSION = os.getenv("TELEGRAM_STRING_SESSION")
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-SESSION_NAME = os.path.join(DATA_DIR, "tracker_session")
 
 TARGET_PCT = 10.0
 STOP_LOSS_PCT = -5.0
