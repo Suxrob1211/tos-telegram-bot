@@ -22,7 +22,7 @@ def parse_signal_message(text: str):
         return None
 
     ticker_match = re.search(
-        r"Ticker:\s*(?:<code>)?([A-Z]{1,6})(?:</code>)?",
+        r"Ticker:\s*(?:<code>)?([A-Z.\-]{1,10})(?:</code>)?",
         text
     )
 
@@ -32,7 +32,7 @@ def parse_signal_message(text: str):
     )
 
     scanner_match = re.search(
-        r"Algorithm:\s*(.+)",
+        r"Algorithm:\s*([^\n]+)",
         text
     )
 
