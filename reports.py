@@ -38,6 +38,67 @@ def send_message(text):
 
 
 # --------------------------------------------------------
+# Signal yopilganda yuboriladi
+# --------------------------------------------------------
+
+def send_closed_signal(signal):
+
+    try:
+
+        entry = datetime.fromisoformat(signal["entry_datetime"])
+        exit_date = datetime.strptime(
+            signal["exit_date"],
+            "%Y-%m-%d"
+        )
+
+        hold_days = (exit_date - entry).days
+
+    except Exception:
+
+        hold_days = 0
+
+    if signal["status"] == "profit":
+        title = "🎯 SIGNAL YOPILDI"
+        status = "✅ TARGET HIT"
+
+    elif signal["status"] == "loss":
+        title = "🛑 SIGNAL YOPILDI"
+        status = "❌ STOP LOSS"
+
+    else:
+        title = "⌛ SIGNAL YOPILDI"
+        status = "⌛ MAX HOLD"
+
+    text = f"""
+{title}
+
+📌 <b>{signal['ticker']}</b>
+
+🧠 Scanner
+<b>{signal['scanner']}</b>
+
+💰 Entry
+<b>${signal['entry_price']:.2f}</b>
+
+💵 Exit
+<b>${signal['exit_price']:.2f}</b>
+
+📈 Result
+<b>{signal['pct_change']:+.2f}%</b>
+
+📅 Holding
+<b>{hold_days} kun</b>
+
+🏁 Status
+{status}
+"""
+
+    send_message(text)
+
+    print(f"Telegramga {signal['ticker']} natijasi yuborildi.")
+
+
+# --------------------------------------------------------
 # Kunlik hisobot
 # --------------------------------------------------------
 
@@ -63,12 +124,12 @@ def send_daily_report():
 
     for signal in today_closed:
 
-        status = signal["status"]
-
-        if status == "profit":
+        if signal["status"] == "profit":
             emoji = "✅"
-        elif status == "loss":
+
+        elif signal["status"] == "loss":
             emoji = "❌"
+
         else:
             emoji = "⏳"
 
@@ -94,7 +155,8 @@ def send_monthly_report():
     month = datetime.now().strftime("%Y-%m")
 
     month_signals = [
-        s for s in signals
+        s
+        for s in signals
         if s["entry_date"].startswith(month)
     ]
 
@@ -104,49 +166,63 @@ def send_monthly_report():
     total = len(month_signals)
 
     profit = sum(
-        1 for s in month_signals
+        1
+        for s in month_signals
         if s["status"] == "profit"
     )
 
     loss = sum(
-        1 for s in month_signals
+        1
+        for s in month_signals
         if s["status"] == "loss"
     )
 
     expired = sum(
-        1 for s in month_signals
+        1
+        for s in month_signals
         if s["status"] == "expired"
     )
 
     open_count = sum(
-        1 for s in month_signals
+        1
+        for s in month_signals
         if s["status"] == "open"
     )
 
     closed = [
-        s for s in month_signals
+        s
+        for s in month_signals
         if s["pct_change"] is not None
     ]
 
     if closed:
+
         avg = sum(
-            s["pct_change"] for s in closed
+            s["pct_change"]
+            for s in closed
         ) / len(closed)
+
     else:
+
         avg = 0
 
     text = f"""
 📈 <b>Oylik hisobot</b>
 
-📊 Jami signal: <b>{total}</b>
+📊 Jami signal:
+<b>{total}</b>
 
-✅ Profit: <b>{profit}</b>
+✅ Profit:
+<b>{profit}</b>
 
-❌ Loss: <b>{loss}</b>
+❌ Loss:
+<b>{loss}</b>
 
-⏳ Expired: <b>{expired}</b>
+⏳ Expired:
+<b>{expired}</b>
 
-📌 Ochiq: <b>{open_count}</b>
+📌 Ochiq:
+<b>{open_count}</b>
 
 💰 O'rtacha natija:
 <b>{avg:+.2f}%</b>
