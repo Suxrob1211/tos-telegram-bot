@@ -1,8 +1,0 @@
-python-dotenv
-playwright
-requests
-pillow
-yfinance
-pandas
-lxml
-beautifulsoup4
