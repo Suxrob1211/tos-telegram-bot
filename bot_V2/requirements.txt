@@ -3,5 +3,5 @@ yfinance
 python-dotenv
 pandas
 matplotlib
-playwright
 Pillow
+playwright==1.61.0
