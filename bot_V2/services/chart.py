@@ -1,6 +1,4 @@
-import tempfile
-import shutil
-import time
+import tempfilel
 from pathlib import Path
 
 from playwright.sync_api import (
@@ -33,11 +31,12 @@ class ChartDownloader:
         )
 
         page.set_viewport_size({
-            "width": 1000,
-            "height": 900,
+            "width": 1600,
+            "height": 1200,
         })    
 
-        page.wait_for_timeout(3000)
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(2000)
                                    
         print("[Chart] Page ready")
 
@@ -50,70 +49,43 @@ class ChartDownloader:
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(3000)
 
-        share_btn = page.locator("button:has-text('Share')")
+        share_btn = page.get_by_role("button", name="Share")
 
-        if share_btn.count() == 0:
-            share_btn = page.locator("[title='Share']")
+        share_btn.wait_for(timeout=30000)
 
-        if share_btn.count() == 0:
-            share_btn = page.locator("button").filter(has_text="Share")
+        share_btn.click()
 
-        print("Share buttons found:", share_btn.count())
+        download_btn = page.locator("a[download]").first
+
+        download_btn.wait_for(timeout=30000)
         
-        share_btn.first.wait_for(state="visible", timeout=10000)
-        share_btn.first.click(timeout=10000)
-
-        link = page.locator("a[download]").first
-
-        print("========== DOWNLOAD INFO ==========")
-        print("HREF :", link.get_attribute("href"))
-        print("NAME :", link.get_attribute("download"))
-        print("==================================")
-
         print("[Chart] Waiting download...")
+        
+        with page.expect_download(timeout=30000) as download_info:
 
-        with page.expect_download(timeout=15000) as download_info:
-            link.click()
-
+            download_btn.click()
+            
         download = download_info.value
-
-        # Download tugashini kutadi
-        download.path()
-
-        src = Path(download.path())
-
+        
         tmp = tempfile.NamedTemporaryFile(
             delete=False,
             suffix=".png",
+
         )
-
+        
         tmp.close()
+        
+        download.save_as(tmp.name)
 
-        dst = Path(tmp.name)
+        src = Path(tmp.name)
 
-        # Chrome faylni bo'shatishini kutamiz
-        copied = False
-
-        for _ in range(20):
-
-            try:
-                shutil.copy2(src, dst)
-                copied = True
-                break
-
-            except PermissionError:
-                time.sleep(0.25)
-
-        if not copied:
-            raise Exception("Downloaded file is still locked.")
-
-        img = dst.read_bytes()
+        img = src.read_bytes()
 
         try:
-            dst.unlink()
+            src.unlink()
         except Exception:
             pass
-
+                
         print(f"[Chart] Download OK ({len(img)//1024} KB)")
 
         return img
