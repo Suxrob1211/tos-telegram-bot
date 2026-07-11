@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 
 WORKDIR /app
 
@@ -34,10 +35,10 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt .
 
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN python -m playwright install chromium
-RUN python -m playwright install-deps chromium
+RUN playwright install --with-deps chromium
 
 COPY . .
 
