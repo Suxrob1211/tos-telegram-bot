@@ -77,3 +77,5 @@ class ChartDownloader:
                 page.context.close()
             except:
                 pass
+
+chart_service = ChartDownloader()
