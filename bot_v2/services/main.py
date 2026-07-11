@@ -5,9 +5,11 @@ from config import CHECK_INTERVAL
 from services.gmail import gmail
 from services.parser import parser
 from services.chart import chart_service
-
+from services.login import create_storage
 
 def main():
+
+    create_storage()   # faqat hozircha shu yerda
 
     gmail.connect()
 
