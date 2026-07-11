@@ -40,11 +40,15 @@ class BrowserManager:
 
                 headless=True,
 
+                chromium_sandbox=False,
+
                 args=[
                     "--no-sandbox",
-                    "--disable-dev-shm-usage",
+                    "--disable-setuid-sandbox",
                     "--disable-gpu",
+                    "--disable-software-rasterizer",
                     "--disable-blink-features=AutomationControlled",
+                    "--window-size=1920,1080",
 
                 ],
 
@@ -60,6 +64,16 @@ class BrowserManager:
                     "height": 1080,
                 },
 
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/138.0 Safari/537.36"
+
+                ),
+
+                locale="en-US",
+                color_scheme="light",
+                
             )    
 
         else:
