@@ -38,18 +38,26 @@ class BrowserManager:
 
             browser = self.playwright.chromium.launch(
 
+                channel=None,
                 headless=True,
 
                 chromium_sandbox=False,
 
-                args=[
+                 args=[
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
                     "--disable-gpu",
                     "--disable-software-rasterizer",
+                    "--disable-extensions",
+                    "--disable-background-networking",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-features=TranslateUI",
+                    "--disable-features=site-per-process",
                     "--disable-blink-features=AutomationControlled",
-                    "--window-size=1920,1080",
-
+                    "--no-zygote", 
                 ],
 
             )
@@ -59,22 +67,24 @@ class BrowserManager:
                 accept_downloads=True,
 
                 viewport={
-
-                    "width": 1920,
-                    "height": 1080,
+                    "width": 1600,
+                    "height": 1200,
                 },
 
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/138.0 Safari/537.36"
-
+                    "Chrome/138.0.0.0 Safari/537.36"
                 ),
 
                 locale="en-US",
                 color_scheme="light",
                 
-            )    
+            )
+
+            self.context.set_extra_http_headers({
+                "Accept-Language": "en-US,en;q=0.9"
+            })    
 
         else:
 
