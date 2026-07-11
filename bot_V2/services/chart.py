@@ -1,10 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from playwright.sync_api import (
-    Error,
-    TimeoutError,
-)
+from playwright.sync_api import Error, TimeoutError
 
 from services.browser import browser_manager
 
@@ -20,31 +17,24 @@ class ChartDownloader:
 
         page = browser_manager.new_page()
 
-        page.set_viewport_size({
-            "width": 1600,
-            "height": 1200,
-        })
-
         url = FINVIZ_URL.format(ticker=ticker.upper())
 
         print(f"[Chart] Opening {ticker}")
 
         page.goto(
             url,
-            wait_until="commit",
-            timeout=45000,
+            wait_until="domcontentloaded",
+            timeout=60000,
         )
 
-        page.wait_for_load_state("domcontentloaded", timeout=45000)
-        page.wait_for_load_state("networkidle", timeout=45000)
+        page.set_viewport_size(
+            {
+                "width": 1600,
+                "height": 1200,
+            }
+        )
 
-        print("[Chart] URL :", page.url)
-
-        try:
-            print("[Chart] Title :", page.title())
-        except Exception:
-            print("[Chart] Title : <unavailable>")
-
+        page.wait_for_load_state("networkidle", timeout=60000)
         page.wait_for_timeout(3000)
 
         print("[Chart] Page ready")
@@ -81,14 +71,43 @@ class ChartDownloader:
 
         download.save_as(tmp.name)
 
-        img = Path(tmp.name).read_bytes()
+        src = Path(tmp.name)
+
+        img = src.read_bytes()
 
         try:
-            Path(tmp.name).unlink()
+            src.unlink()
         except Exception:
             pass
 
         print(f"[Chart] Download OK ({len(img)//1024} KB)")
+
+        return img
+
+    def _page_screenshot(self, page):
+
+        print("[Chart] Screenshot fallback...")
+
+        chart = page.locator("canvas").first
+
+        if chart.count():
+
+            img = chart.screenshot(type="png")
+
+            print(
+                f"[Chart] Canvas screenshot OK ({len(img)//1024} KB)"
+            )
+
+            return img
+
+        img = page.screenshot(
+            full_page=False,
+            type="png",
+        )
+
+        print(
+            f"[Chart] Page screenshot OK ({len(img)//1024} KB)"
+        )
 
         return img
 
@@ -103,15 +122,25 @@ def get_chart(ticker: str):
 
         page = downloader._open_page(ticker)
 
-        return downloader._download_chart(page)
+        try:
+            return downloader._download_chart(page)
+
+        except Exception as e:
+
+            print(f"[Chart] Download failed: {e}")
+
+            return downloader._page_screenshot(page)
 
     except TimeoutError as e:
+
         print(f"[Chart] Timeout: {e}")
 
     except Error as e:
+
         print(f"[Chart] Playwright Error: {e}")
 
     except Exception as e:
+
         print(f"[Chart] Error: {e}")
 
     finally:
