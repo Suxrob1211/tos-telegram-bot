@@ -37,27 +37,13 @@ class BrowserManager:
             print("[Browser] Railway mode")
 
             browser = self.playwright.chromium.launch(
-
-                channel=None,
                 headless=True,
-
                 chromium_sandbox=False,
-
                  args=[
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--disable-software-rasterizer",
-                    "--disable-extensions",
-                    "--disable-background-networking",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows",
-                    "--disable-renderer-backgrounding",
-                    "--disable-features=TranslateUI",
-                    "--disable-features=site-per-process",
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-zygote", 
                 ],
 
             )
@@ -88,7 +74,7 @@ class BrowserManager:
 
         else:
 
-            print("[Browser] Windows mode")
+            print("[Browser] Version:", browser.version)
 
             profile = str(Path.home() / "playwright_profile")
 
@@ -117,7 +103,14 @@ class BrowserManager:
         if not self.context:
             self.start()
 
-        return self.context.new_page()
+        page = self.context.new_page()
+
+        page.on(
+            "crash",
+            lambda: print("[Browser] PAGE CRASHED")
+        )
+
+        return page
 
     def close(self):
 
