@@ -34,8 +34,10 @@ class ChartDownloader:
             }
         )
 
-        page.wait_for_load_state("networkidle", timeout=60000)
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(5000)
+
+        print("[Chart] URL   :", page.url)
+        print("[Chart] Title :", page.title())
 
         print("[Chart] Page ready")
 
@@ -47,13 +49,18 @@ class ChartDownloader:
 
         share_btn = page.get_by_role("button", name="Share")
 
-        share_btn.wait_for(timeout=30000)
+        if share_btn.count() == 0:
+            raise Exception("Share button not found")
 
-        share_btn.click()
+        share_btn.first.wait_for(timeout=10000)
+        share_btn.first.click()
 
         download_btn = page.locator("a[download]").first
 
-        download_btn.wait_for(timeout=30000)
+        if download_btn.count() == 0:
+            raise Exception("Download button not found")
+
+        download_btn.wait_for(timeout=10000)
 
         print("[Chart] Waiting download...")
 
@@ -71,12 +78,10 @@ class ChartDownloader:
 
         download.save_as(tmp.name)
 
-        src = Path(tmp.name)
-
-        img = src.read_bytes()
+        img = Path(tmp.name).read_bytes()
 
         try:
-            src.unlink()
+            Path(tmp.name).unlink()
         except Exception:
             pass
 
@@ -88,28 +93,22 @@ class ChartDownloader:
 
         print("[Chart] Screenshot fallback...")
 
-        chart = page.locator("canvas").first
+        try:
 
-        if chart.count():
-
-            img = chart.screenshot(type="png")
-
-            print(
-                f"[Chart] Canvas screenshot OK ({len(img)//1024} KB)"
+            img = page.screenshot(
+                full_page=True,
+                type="png",
             )
+
+            print(f"[Chart] Screenshot OK ({len(img)//1024} KB)")
 
             return img
 
-        img = page.screenshot(
-            full_page=False,
-            type="png",
-        )
+        except Exception as e:
 
-        print(
-            f"[Chart] Page screenshot OK ({len(img)//1024} KB)"
-        )
+            print("[Chart] Screenshot failed:", e)
 
-        return img
+            return None
 
 
 def get_chart(ticker: str):
@@ -123,6 +122,7 @@ def get_chart(ticker: str):
         page = downloader._open_page(ticker)
 
         try:
+
             return downloader._download_chart(page)
 
         except Exception as e:
