@@ -20,24 +20,33 @@ class ChartDownloader:
 
         page = browser_manager.new_page()
 
+        page.set_viewport_size({
+            "width": 1600,
+            "height": 1200,
+        })
+
         url = FINVIZ_URL.format(ticker=ticker.upper())
 
         print(f"[Chart] Opening {ticker}")
 
         page.goto(
             url,
-            wait_until="domcontentloaded",
-            timeout=30000,
+            wait_until="commit",
+            timeout=45000,
         )
 
-        page.set_viewport_size({
-            "width": 1600,
-            "height": 1200,
-        })    
+        page.wait_for_load_state("domcontentloaded", timeout=45000)
+        page.wait_for_load_state("networkidle", timeout=45000)
 
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(2000)
-                                   
+        print("[Chart] URL :", page.url)
+
+        try:
+            print("[Chart] Title :", page.title())
+        except Exception:
+            print("[Chart] Title : <unavailable>")
+
+        page.wait_for_timeout(3000)
+
         print("[Chart] Page ready")
 
         return page
@@ -45,9 +54,6 @@ class ChartDownloader:
     def _download_chart(self, page):
 
         print("[Chart] Opening Share menu...")
-
-        page.wait_for_load_state("domcontentloaded")
-        page.wait_for_timeout(3000)
 
         share_btn = page.get_by_role("button", name="Share")
 
@@ -58,34 +64,30 @@ class ChartDownloader:
         download_btn = page.locator("a[download]").first
 
         download_btn.wait_for(timeout=30000)
-        
-        print("[Chart] Waiting download...")
-        
-        with page.expect_download(timeout=30000) as download_info:
 
+        print("[Chart] Waiting download...")
+
+        with page.expect_download(timeout=30000) as download_info:
             download_btn.click()
-            
+
         download = download_info.value
-        
+
         tmp = tempfile.NamedTemporaryFile(
             delete=False,
             suffix=".png",
-
         )
-        
+
         tmp.close()
-        
+
         download.save_as(tmp.name)
 
-        src = Path(tmp.name)
-
-        img = src.read_bytes()
+        img = Path(tmp.name).read_bytes()
 
         try:
-            src.unlink()
+            Path(tmp.name).unlink()
         except Exception:
             pass
-                
+
         print(f"[Chart] Download OK ({len(img)//1024} KB)")
 
         return img
