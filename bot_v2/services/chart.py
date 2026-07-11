@@ -1,33 +1,79 @@
-from config import FINVIZ_URL
-from services.browser import browser
+import tempfile
+from pathlib import Path
+
+from playwright.sync_api import TimeoutError
+
+from services.browser import browser_manager
 
 
-class ChartService:
+FINVIZ_URL = "https://finviz.com/quote.ashx?t={ticker}&p=d"
+
+
+class ChartDownloader:
 
     def __init__(self):
-        browser.start()
+        browser_manager.start()
 
-    def open(self, ticker: str):
+    def get_chart(self, ticker: str):
 
-        page = browser.new_page()
+        page = browser_manager.new_page()
 
-        url = FINVIZ_URL.format(
-            ticker=ticker.upper()
-        )
+        try:
 
-        print(f"[Chart] Opening {ticker}")
+            print(f"[Chart] Opening {ticker}")
 
-        page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=60000,
-        )
+            page.goto(
+                FINVIZ_URL.format(ticker=ticker.upper()),
+                wait_until="networkidle",
+                timeout=60000,
+            )
 
-        page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(3000)
 
-        page.wait_for_timeout(3000)
+            print("[Chart] Selecting 6 Months...")
 
-        return page
+            page.get_by_role("button", name="Range").click()
 
+            page.get_by_text("6 Months", exact=True).click()
 
-chart_service = ChartService()
+            page.wait_for_timeout(2000)
+
+            print("[Chart] Opening Share...")
+
+            page.get_by_role("button", name="Share").click()
+
+            with page.expect_download() as download_info:
+
+                page.locator("a[download]").click()
+
+            download = download_info.value
+
+            tmp = tempfile.NamedTemporaryFile(
+                suffix=".png",
+                delete=False,
+            )
+
+            tmp.close()
+
+            download.save_as(tmp.name)
+
+            img = Path(tmp.name).read_bytes()
+
+            Path(tmp.name).unlink(missing_ok=True)
+
+            print("[Chart] Download OK")
+
+            return img
+
+        except TimeoutError as e:
+
+            print(e)
+
+            return None
+
+        finally:
+
+            try:
+                page.context.close()
+            except:
+                pass
