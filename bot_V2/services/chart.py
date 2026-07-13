@@ -335,9 +335,10 @@ class ChartDownloader:
 
     def _resize_to_target_ratio(self, img_bytes: bytes, target_ratio: float) -> bytes:
         """
-        Rasmni berilgan en:bo'y nisbatiga moslaydi. Kontent yo'qolib
-        ketmasligi uchun kesish (crop) emas, balki fon rangidagi
-        bo'sh joy (padding) qo'shish orqali nisbatni to'g'rilaydi.
+        Rasmni berilgan en:bo'y nisbatiga moslaydi. Finviz rasmi juda keng
+        (2560x1200 atrofida) chiqadi — kenglikni markazdan kesib (crop),
+        grafik mazmuni ramkani to'liq to'ldiradigan qilamiz (padding emas,
+        aks holda grafik kichkina bo'lib qolib, atrofi bo'sh ko'rinadi).
         """
         from PIL import Image
         import io as _io
@@ -346,23 +347,16 @@ class ChartDownloader:
         w, h = img.size
         current_ratio = w / h
 
-        # Finviz fon rangi (dark theme uchun taxminiy)
-        bg_color = img.getpixel((2, 2))
-
         if current_ratio > target_ratio:
-            # Rasm juda keng — balandlikka padding qo'shamiz
-            new_h = int(w / target_ratio)
-            new_img = Image.new("RGB", (w, new_h), bg_color)
-            y_offset = (new_h - h) // 2
-            new_img.paste(img, (0, y_offset))
-            img = new_img
-        elif current_ratio < target_ratio:
-            # Rasm juda tor — kenglikka padding qo'shamiz
+            # Rasm juda keng — kenglikni markazdan kesib qisqartiramiz
             new_w = int(h * target_ratio)
-            new_img = Image.new("RGB", (new_w, h), bg_color)
-            x_offset = (new_w - w) // 2
-            new_img.paste(img, (x_offset, 0))
-            img = new_img
+            x_offset = (w - new_w) // 2
+            img = img.crop((x_offset, 0, x_offset + new_w, h))
+        elif current_ratio < target_ratio:
+            # Rasm juda tor/baland — balandlikni markazdan kesib qisqartiramiz
+            new_h = int(w / target_ratio)
+            y_offset = (h - new_h) // 2
+            img = img.crop((0, y_offset, w, y_offset + new_h))
 
         out = _io.BytesIO()
         img.save(out, format="PNG")
