@@ -83,7 +83,7 @@ def get_finviz_via_proxy(ticker: str) -> bytes | None:
 
 # ── Matplotlib bilan candlestick grafik (zaxira) ─────────────────────────────
 def get_matplotlib_chart(ticker: str) -> bytes | None:
-    """Yahoo Finance dan data olib, matplotlib bilan Finviz uslubida grafik yasaydi."""
+    """Yahoo Finance dan data olib, matplotlib bilan Finviz HD uslubida grafik yasaydi."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -97,6 +97,7 @@ def get_matplotlib_chart(ticker: str) -> bytes | None:
             print(f"[Chart] {ticker} data yoq")
             return None
 
+        # Ixcham, o'qish oson nisbat (kvadratga yaqin - 12:7)
         fig, (ax1, ax2) = plt.subplots(
             2, 1, figsize=(12, 7),
             gridspec_kw={"height_ratios": [3, 1]},
