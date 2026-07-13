@@ -39,8 +39,7 @@ IS_DARK_JS = """
             );
             if (use) {
                 const href = use.getAttribute('href') || '';
-                // brightness1Outlined = dark (oy), brightnessHigh/sun = light
-                if (href.includes('brightness1')) return true;   // dark
+                if (href.includes('brightness1')) return true;   // dark (oy)
                 if (href.includes('brightnessHigh') || href.toLowerCase().includes('sun')) return false;
             }
         } catch (e) {}
@@ -97,6 +96,33 @@ def _force_light_url(url):
         return url
 
 
+def _is_image_dark(img_bytes, threshold=90):
+    """Rasm fonining o'rtacha yorqinligini tekshiradi. Dark bo'lsa True."""
+    try:
+        from PIL import Image
+        import io as _io
+
+        img = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        w, h = img.size
+        points = [
+            (5, 5), (w - 5, 5), (5, h - 5), (w - 5, h - 5),
+            (w // 2, 3), (3, h // 2),
+        ]
+        total = 0
+        for x, y in points:
+            x = max(0, min(w - 1, x))
+            y = max(0, min(h - 1, y))
+            px = img.getpixel((x, y))
+            r, g, b = px[:3]
+            total += (r + g + b) / 3
+        avg = total / len(points)
+        print(f"[Chart] Rasm fon yorqinligi: {avg:.0f} (threshold={threshold})")
+        return avg < threshold
+    except Exception as e:
+        print(f"[Chart] Dark tekshirishda xato: {e}")
+        return False
+
+
 class ChartDownloader:
 
     def __init__(self):
@@ -133,28 +159,56 @@ class ChartDownloader:
             pass
 
         for sel in THEME_TOGGLE_SELECTORS:
-            try:
-                toggle = page.locator(sel).first
-                if toggle.count() == 0:
-                    continue
-
+            for attempt in range(2):
                 try:
-                    toggle.scroll_into_view_if_needed(timeout=1500)
-                except Exception:
-                    pass
+                    toggle = page.locator(sel).first
+                    if toggle.count() == 0:
+                        break
 
-                toggle.click(timeout=2500, force=True)
-                print(f"[Chart] Theme toggle bosildi: {sel}")
-                page.wait_for_timeout(1000)
+                    try:
+                        toggle.scroll_into_view_if_needed(timeout=1500)
+                    except Exception:
+                        pass
 
-                if not page.evaluate(IS_DARK_JS):
-                    print("[Chart] Light ga o'tdi ✅")
-                    return
-                else:
-                    print("[Chart] Hali dark, keyingi selektor...")
-            except Exception as e:
-                print(f"[Chart] Toggle xato ({sel}): {e}")
-                continue
+                    toggle.click(timeout=2500, force=True)
+                    print(f"[Chart] Theme toggle bosildi: {sel}")
+
+                    # Toggle navigatsiya/reload qilishi mumkin - kutamiz
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(1200)
+
+                    try:
+                        still_dark = page.evaluate(IS_DARK_JS)
+                    except Exception:
+                        page.wait_for_timeout(800)
+                        try:
+                            still_dark = page.evaluate(IS_DARK_JS)
+                        except Exception:
+                            still_dark = True
+
+                    if not still_dark:
+                        print("[Chart] Light ga o'tdi ✅")
+                        return
+                    else:
+                        print(f"[Chart] Hali dark (urinish {attempt + 1})")
+                except Exception as e:
+                    msg = str(e)
+                    if "Execution context was destroyed" in msg or "navigation" in msg:
+                        print("[Chart] Toggle navigatsiya qildi (normal), kutamiz...")
+                        try:
+                            page.wait_for_load_state("domcontentloaded", timeout=5000)
+                            page.wait_for_timeout(1000)
+                            if not page.evaluate(IS_DARK_JS):
+                                print("[Chart] Light ga o'tdi ✅")
+                                return
+                        except Exception:
+                            pass
+                    else:
+                        print(f"[Chart] Toggle xato ({sel}): {msg}")
+                    continue
 
         print("[Chart] Theme toggle ishlamadi")
 
@@ -443,7 +497,7 @@ class ChartDownloader:
         if download_btn is None:
             raise Exception("Download tugmasi topilmadi")
 
-        # Chart so'rovining URL'ini ushlab olamiz (zaxira sifatida temani majburlash uchun)
+        # Chart so'rovining URL'ini ushlab olamiz (zaxira uchun)
         captured_url = {"value": None}
 
         def _on_request(request):
@@ -494,7 +548,7 @@ class ChartDownloader:
             except Exception:
                 pass
 
-        # Zaxira: agar ushlangan URL'da tema dark bo'lsa, light ga o'zgartirib qayta yuklaymiz
+        # Zaxira: URL'da tema dark bo'lsa, light ga o'zgartirib qayta yuklaymiz
         src_url = captured_url["value"]
         if src_url and "theme=dark" in src_url.lower():
             light_url = _force_light_url(src_url)
@@ -512,6 +566,11 @@ class ChartDownloader:
 
         if not img_bytes:
             raise Exception("Download rasmi olinmadi")
+
+        # Yakuniy rasm dark bo'lsa xato beramiz -> retry / zaxira usul ishga tushadi
+        if _is_image_dark(img_bytes):
+            print("[Chart] ⚠️ Yuklangan rasm DARK holatda!")
+            raise Exception("Rasm dark holatda yuklandi")
 
         print(f"[Chart] Share->Download OK ({len(img_bytes)//1024} KB)")
 
@@ -574,6 +633,10 @@ class ChartDownloader:
             print(f"[Chart] Share->Download muvaffaqiyatsiz: {e}")
 
         print("[Chart] Zaxira usul: screenshot")
+
+        # Screenshot oldidan yana light ga o'tkazamiz
+        self._set_finviz_light_theme(page)
+
         chart = self._find_chart(page)
 
         if chart:
@@ -586,6 +649,9 @@ class ChartDownloader:
                         raise ValueError("Element too small")
 
                 img = chart.screenshot(type="png")
+                if _is_image_dark(img):
+                    print("[Chart] ⚠️ Screenshot ham dark, page screenshot ga o'tamiz")
+                    raise ValueError("Screenshot dark")
                 print(f"[Chart] Chart screenshot OK ({len(img)//1024} KB)")
                 return img
             except Exception as e:
