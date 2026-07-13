@@ -313,6 +313,14 @@ class ChartDownloader:
 
         print(f"[Chart] Share->Download orqali olindi ({len(img_bytes)//1024} KB)")
 
+        # Rasmni matplotlib grafik nisbatiga (12:7 ≈ 1.714:1) moslashtiramiz.
+        # Finviz HD rasmi juda keng va past (ingichka) chiqadi, shuning uchun
+        # yon tomonlarini kesib, kerakli nisbatga keltiramiz.
+        try:
+            img_bytes = self._resize_to_target_ratio(img_bytes, target_ratio=12 / 7)
+        except Exception as e:
+            print(f"[Chart] Qayta o'lchamlashda xato (asl rasm ishlatiladi): {e}")
+
         # Oynani yopamiz (keyingi ticker uchun tozalik)
         try:
             close_btn = page.locator(
@@ -324,6 +332,43 @@ class ChartDownloader:
             pass
 
         return img_bytes
+
+    def _resize_to_target_ratio(self, img_bytes: bytes, target_ratio: float) -> bytes:
+        """
+        Rasmni berilgan en:bo'y nisbatiga moslaydi. Kontent yo'qolib
+        ketmasligi uchun kesish (crop) emas, balki fon rangidagi
+        bo'sh joy (padding) qo'shish orqali nisbatni to'g'rilaydi.
+        """
+        from PIL import Image
+        import io as _io
+
+        img = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
+        w, h = img.size
+        current_ratio = w / h
+
+        # Finviz fon rangi (dark theme uchun taxminiy)
+        bg_color = img.getpixel((2, 2))
+
+        if current_ratio > target_ratio:
+            # Rasm juda keng — balandlikka padding qo'shamiz
+            new_h = int(w / target_ratio)
+            new_img = Image.new("RGB", (w, new_h), bg_color)
+            y_offset = (new_h - h) // 2
+            new_img.paste(img, (0, y_offset))
+            img = new_img
+        elif current_ratio < target_ratio:
+            # Rasm juda tor — kenglikka padding qo'shamiz
+            new_w = int(h * target_ratio)
+            new_img = Image.new("RGB", (new_w, h), bg_color)
+            x_offset = (new_w - w) // 2
+            new_img.paste(img, (x_offset, 0))
+            img = new_img
+
+        out = _io.BytesIO()
+        img.save(out, format="PNG")
+        result = out.getvalue()
+        print(f"[Chart] Qayta o'lchamlandi: {w}x{h} -> {img.size[0]}x{img.size[1]}")
+        return result
 
     def _find_chart(self, page):
 
