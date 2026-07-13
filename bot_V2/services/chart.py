@@ -21,6 +21,16 @@ class ChartDownloader:
 
         print(f"[Chart] URL: {url}")
 
+        # Sahifa ochilishidan OLDIN light-theme cookie'sini o'rnatamiz,
+        # aks holda Finviz dark rejimda render qilib ulguradi
+        try:
+            page.context.add_cookies([
+                {"name": "theme", "value": "light", "url": "https://finviz.com"},
+                {"name": "darkMode", "value": "false", "url": "https://finviz.com"},
+            ])
+        except Exception as e:
+            print(f"[Chart] Cookie sozlashda xato: {e}")
+
         # Birinchi urinish
         try:
 
@@ -48,18 +58,46 @@ class ChartDownloader:
         )
 
         # Finviz'ni majburan kunduzgi (light) rejimga o'tkazamiz
+        # (localStorage sahifa yuklangandan keyin ham qo'shimcha himoya sifatida)
         try:
             page.evaluate("""
                 () => {
                     try {
                         localStorage.setItem('theme', 'light');
                         localStorage.setItem('darkMode', 'false');
+                        localStorage.setItem('colorScheme', 'light');
                         document.cookie = 'theme=light; path=/';
                         document.documentElement.classList.remove('dark');
+                        document.documentElement.classList.add('light');
                         document.documentElement.setAttribute('data-theme', 'light');
+                        document.body.classList.remove('dark');
                     } catch (e) {}
                 }
             """)
+        except Exception:
+            pass
+
+        # Agar theme almashtirish tugmasi bo'lsa va hali dark bo'lsa,
+        # uni bosib ko'ramiz (Finviz UI'da toggle mavjud bo'lishi mumkin)
+        try:
+            is_dark = page.evaluate("""
+                () => document.documentElement.classList.contains('dark')
+                      || document.body.classList.contains('dark')
+                      || getComputedStyle(document.body).backgroundColor.includes('rgb(0')
+            """)
+            if is_dark:
+                toggle = page.locator(
+                    '[class*="theme-toggle"], [class*="dark-mode"], button[aria-label*="theme" i]'
+                ).first
+                if toggle.count() > 0:
+                    toggle.click(timeout=1000)
+                    print("[Chart] Theme toggle bosildi")
+        except Exception:
+            pass
+
+        # Sahifani qayta yuklab, cookie/localStorage kuchga kirishini ta'minlaymiz
+        try:
+            page.reload(wait_until="domcontentloaded", timeout=20000)
         except Exception:
             pass
 
