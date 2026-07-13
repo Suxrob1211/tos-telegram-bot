@@ -199,21 +199,21 @@ class ChartDownloader:
             'button:has-text("Share"), a:has-text("Share"), [class*="share"]:has-text("Share")'
         ).first
 
-        share_btn.wait_for(state="visible", timeout=5000)
-        share_btn.click()
+        share_btn.wait_for(state="visible", timeout=8000)
+        share_btn.click(timeout=8000)
         print("[Chart] Share tugmasi bosildi")
 
         # "Share Chart" oynasi ochilishini kutamiz
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(1000)
 
         # "Download" tugmasini topamiz va bosishdan oldin yuklanishni kutamiz
         download_btn = page.locator(
             'button:has-text("Download"), a:has-text("Download")'
         ).first
-        download_btn.wait_for(state="visible", timeout=5000)
+        download_btn.wait_for(state="visible", timeout=8000)
 
         with page.expect_download(timeout=15000) as download_info:
-            download_btn.click()
+            download_btn.click(timeout=8000)
             print("[Chart] Download tugmasi bosildi")
 
         download = download_info.value
@@ -360,24 +360,29 @@ class ChartDownloader:
 
         print("[Chart] Canvas topilmadi -> Page screenshot")
 
-        img = page.screenshot(
+        try:
+            img = page.screenshot(
 
-            clip={
-                "x": 0,
-                "y": 140,
-                "width": 1600,
-                "height": 850,
-            },
+                clip={
+                    "x": 0,
+                    "y": 140,
+                    "width": 1600,
+                    "height": 850,
+                },
 
-            type="png",
+                type="png",
 
-        )
+            )
 
-        print(
-            f"[Chart] Page screenshot OK ({len(img)//1024} KB)"
-        )
+            print(
+                f"[Chart] Page screenshot OK ({len(img)//1024} KB)"
+            )
 
-        return img
+            return img
+
+        except Exception as e:
+            print(f"[Chart] Page screenshot ham muvaffaqiyatsiz: {e}")
+            return None
 
 
 def get_chart(ticker: str):
@@ -409,6 +414,41 @@ def get_chart(ticker: str):
     except Exception as e:
 
         print(f"[Chart] Error : {e}")
+
+    finally:
+
+        try:
+
+            if page:
+
+                page.close()
+
+        except Exception:
+
+            pass
+
+    # Birinchi urinish muvaffaqiyatsiz bo'lsa, toza sahifa bilan bitta
+    # qo'shimcha urinish qilamiz (crash bo'lgan sahifa holatidan qutilish uchun)
+    page = None
+    try:
+
+        print(f"[Chart] Qayta urinish : {ticker}")
+
+        downloader = ChartDownloader()
+
+        page = downloader._open_page(ticker)
+
+        img = downloader._capture_chart(page)
+
+        if img:
+
+            print(f"[Chart] Qayta urinishda OK : {ticker}")
+
+        return img
+
+    except Exception as e:
+
+        print(f"[Chart] Qayta urinish ham muvaffaqiyatsiz : {e}")
 
     finally:
 
