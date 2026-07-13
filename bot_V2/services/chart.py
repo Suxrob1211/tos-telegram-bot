@@ -3,12 +3,44 @@ from services.browser import browser_manager
 
 FINVIZ_URL = "https://finviz.com/quote.ashx?t={ticker}&p=d&r=m6"
 
-# Layout siljishi (reflow) va xotira sarfini keltirib chiqaradigan
-# reklama/tracker domenlari - bularni bloklaymiz
 BLOCKED_DOMAINS = [
     "doubleclick.net", "googlesyndication", "google-analytics",
     "googletagmanager", "adsystem", "facebook.net", "amazon-adsystem",
     "criteo", "taboola", "outbrain", "adnxs.com", "adservice.google",
+]
+
+LIGHT_THEME_JS = """
+    () => {
+        try {
+            localStorage.setItem('theme', 'light');
+            localStorage.setItem('darkMode', 'false');
+            localStorage.setItem('colorScheme', 'light');
+            localStorage.setItem('tv-chart-theme', 'light');
+            localStorage.setItem('chart-theme', 'light');
+            document.cookie = 'theme=light; path=/';
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.body.classList.remove('dark');
+        } catch (e) {}
+    }
+"""
+
+IS_DARK_JS = """
+    () => document.documentElement.classList.contains('dark')
+          || document.body.classList.contains('dark')
+          || getComputedStyle(document.body).backgroundColor.includes('rgb(0')
+          || getComputedStyle(document.body).backgroundColor.includes('19, 23, 34')
+"""
+
+TOGGLE_SELECTORS = [
+    'button[aria-label*="theme" i]',
+    'button[title*="theme" i]',
+    'button[data-name*="theme" i]',
+    '[class*="theme-toggle"]',
+    '[class*="dark-mode"]',
+    'button:has(svg[class*="moon" i])',
+    'button:has(svg[class*="sun" i])',
 ]
 
 
@@ -36,15 +68,37 @@ class ChartDownloader:
         except Exception as e:
             print(f"[Chart] Route bloklashda xato: {e}")
 
+    def _force_light_all_frames(self, page):
+        """
+        Chart odatda alohida iframe ichida ishlaydi, shuning uchun
+        light-tema skriptini asosiy sahifa + barcha iframe'larda ishga
+        tushiramiz.
+        """
+        for frame in page.frames:
+            try:
+                frame.evaluate(LIGHT_THEME_JS)
+            except Exception:
+                continue
+
+            try:
+                is_dark = frame.evaluate(IS_DARK_JS)
+            except Exception:
+                is_dark = False
+
+            if not is_dark:
+                continue
+
+            for sel in TOGGLE_SELECTORS:
+                try:
+                    toggle = frame.locator(sel).first
+                    if toggle.count() > 0:
+                        toggle.click(timeout=1500, force=True)
+                        print(f"[Chart] Frame theme toggle bosildi: {sel}")
+                        break
+                except Exception:
+                    continue
+
     def _safe_click(self, page, locator, label: str):
-        """
-        scroll_into_view_if_needed / click dagi 'stability' timeout muammosidan
-        qochish uchun bosqichma-bosqich zaxira usullar bilan bosadi:
-        1) scroll_into_view_if_needed (qisqa timeout, xato bo'lsa e'tiborsiz)
-        2) oddiy click(force=True)
-        3) bounding_box() orqali mouse koordinatasiga bosish
-        4) JS orqali .click()
-        """
         try:
             locator.scroll_into_view_if_needed(timeout=1500)
         except Exception:
@@ -88,8 +142,8 @@ class ChartDownloader:
 
         try:
             page.context.add_cookies([
-                {"name": "theme", "value": "light", "url": "https://finviz.com"},
-                {"name": "darkMode", "value": "false", "url": "https://finviz.com"},
+                {"name": "theme", "value": "light", "domain": ".finviz.com", "path": "/"},
+                {"name": "darkMode", "value": "false", "domain": ".finviz.com", "path": "/"},
             ])
         except Exception as e:
             print(f"[Chart] Cookie sozlashda xato: {e}")
@@ -103,36 +157,7 @@ class ChartDownloader:
         page.set_viewport_size({"width": 1600, "height": 1200})
 
         try:
-            page.evaluate("""
-                () => {
-                    try {
-                        localStorage.setItem('theme', 'light');
-                        localStorage.setItem('darkMode', 'false');
-                        localStorage.setItem('colorScheme', 'light');
-                        document.cookie = 'theme=light; path=/';
-                        document.documentElement.classList.remove('dark');
-                        document.documentElement.classList.add('light');
-                        document.documentElement.setAttribute('data-theme', 'light');
-                        document.body.classList.remove('dark');
-                    } catch (e) {}
-                }
-            """)
-        except Exception:
-            pass
-
-        try:
-            is_dark = page.evaluate("""
-                () => document.documentElement.classList.contains('dark')
-                      || document.body.classList.contains('dark')
-                      || getComputedStyle(document.body).backgroundColor.includes('rgb(0')
-            """)
-            if is_dark:
-                toggle = page.locator(
-                    '[class*="theme-toggle"], [class*="dark-mode"], button[aria-label*="theme" i]'
-                ).first
-                if toggle.count() > 0:
-                    toggle.click(timeout=1000)
-                    print("[Chart] Theme toggle bosildi")
+            page.evaluate(LIGHT_THEME_JS)
         except Exception:
             pass
 
@@ -145,6 +170,11 @@ class ChartDownloader:
             page.wait_for_load_state("networkidle", timeout=5000)
         except Exception:
             pass
+
+        # Chart iframe yuklanishi uchun ozroq kutamiz, so'ng barcha
+        # frame'larda light temani majburlab qo'yamiz
+        page.wait_for_timeout(1000)
+        self._force_light_all_frames(page)
 
         try:
             page.evaluate("""
@@ -180,6 +210,10 @@ class ChartDownloader:
         page.locator("canvas").first.wait_for(state="visible", timeout=15000)
         page.wait_for_timeout(1200)
 
+        # Canvas yuklanganidan keyin yana bir marta light tekshirish
+        # (ba'zan chart o'zi keyinroq dark bo'lib qayta chiziladi)
+        self._force_light_all_frames(page)
+
         try:
             page.evaluate("""
                 () => {
@@ -212,11 +246,6 @@ class ChartDownloader:
         return page
 
     def _scale_image(self, img_bytes: bytes, target_width: int = 1400) -> bytes:
-        """
-        Rasmni proporsional ravishda kattalashtiradi.
-        Hech narsa kesilmaydi, hech narsa qo'shilmaydi —
-        faqat o'lcham oshiriladi.
-        """
         try:
             from PIL import Image
             import io as _io
@@ -246,10 +275,6 @@ class ChartDownloader:
             return img_bytes
 
     def _capture_via_share_download(self, page):
-        """
-        Finviz Share Chart -> Download orqali asl PNG grafikni yuklab oladi.
-        So'ng proporsional ravishda kattalashtiradi.
-        """
         try:
             page.evaluate("""
                 () => {
@@ -291,15 +316,6 @@ class ChartDownloader:
             """)
         except Exception:
             pass
-
-        try:
-            btn_texts = page.eval_on_selector_all(
-                "button, a",
-                "els => els.map(e => e.textContent.trim()).filter(t => t.length > 0 && t.length < 40)"
-            )
-            print(f"[Chart] Sahifadagi tugmalar: {btn_texts[:30]}")
-        except Exception as e:
-            print(f"[Chart] Diagnostika xato: {e}")
 
         download_selectors = [
             'button:has-text("Download")',
@@ -396,7 +412,6 @@ class ChartDownloader:
         return None
 
     def _capture_chart(self, page):
-        # 1-usul: Share -> Download
         try:
             img = self._capture_via_share_download(page)
             if img:
@@ -404,7 +419,6 @@ class ChartDownloader:
         except Exception as e:
             print(f"[Chart] Share->Download muvaffaqiyatsiz: {e}")
 
-        # 2-usul (zaxira): screenshot
         print("[Chart] Zaxira usul: screenshot")
         chart = self._find_chart(page)
 
@@ -459,7 +473,6 @@ def get_chart(ticker: str):
         except Exception:
             pass
 
-    # Qayta urinish
     page = None
     try:
         print(f"[Chart] Qayta urinish : {ticker}")
