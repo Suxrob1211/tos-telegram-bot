@@ -13,53 +13,70 @@ class ChartDownloader:
     def _open_page(self, ticker: str):
 
         page = browser_manager.new_page()
-        
-        print(f"[Chart] Page id: {id(page)}")
 
+        print(f"[Chart] Page id: {id(page)}")
         print(f"[Chart] Opening {ticker}")
 
         url = FINVIZ_URL.format(ticker=ticker.upper())
 
-        print(f"[Chart] Opening {ticker}")
         print(f"[Chart] URL: {url}")
 
-        page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=30000,
+        # Birinchi urinish
+        try:
+
+            page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+
+        except TimeoutError:
+
+            print("[Chart] First timeout -> retry")
+
+            page.goto(
+                url,
+                wait_until="commit",
+                timeout=30000,
+            )
+
+        page.set_viewport_size(
+            {
+                "width": 1600,
+                "height": 1200,
+            }
         )
 
-        page.set_viewport_size({
-            "width": 1600,
-            "height": 1200,
-        })
-
-        page.locator("canvas.second").wait_for(
+        # Grafik chiqishini kutamiz
+        page.locator("canvas").first.wait_for(
             state="visible",
             timeout=15000,
         )
 
         title = page.title()
 
-        print(f"[Chart] Title: {title}")
+        print(f"[Chart] Title : {title}")
 
-        if "Stock Price" not in title:
-            raise Exception(f"Unexpected Finviz page: {title}")
+        if ticker.upper() not in title.upper():
+            raise Exception(
+                f"Unexpected Finviz page : {title}"
+            )
 
         return page
 
-    def _capture_chart(self, page):
-
-        print("[Chart] Searching chart...")
+    def _find_chart(self, page):
 
         selectors = [
-            "canvas.second",
-            "canvas",
-            "div[id^='chart'] canvas",
-            "div[class*='chart'] canvas",
-        ]
 
-        chart = None
+            "canvas.second",
+
+            "canvas",
+
+            "div[id^='chart'] canvas",
+
+            "div[class*='chart'] canvas",
+
+        ]
 
         for selector in selectors:
 
@@ -69,17 +86,24 @@ class ChartDownloader:
 
                 locator.wait_for(
                     state="visible",
-                    timeout=3000,
+                    timeout=2000,
                 )
 
-                chart = locator
+                print(f"[Chart] Found : {selector}")
 
-                print(f"[Chart] Found: {selector}")
-
-                break
+                return locator
 
             except Exception:
-                continue
+
+                pass
+
+        return None
+
+    def _capture_chart(self, page):
+
+        print("[Chart] Searching chart...")
+
+        chart = self._find_chart(page)
 
         if chart:
 
@@ -90,7 +114,7 @@ class ChartDownloader:
                 if box:
 
                     print(
-                        f"[Chart] Size: {int(box['width'])}x{int(box['height'])}"
+                        f"[Chart] Size : {int(box['width'])}x{int(box['height'])}"
                     )
 
                 img = chart.screenshot(
@@ -105,18 +129,21 @@ class ChartDownloader:
 
             except Exception as e:
 
-                print(f"[Chart] Canvas screenshot failed: {e}")
+                print(f"[Chart] Canvas screenshot failed : {e}")
 
-        print("[Chart] Canvas not found -> Page screenshot")
+        print("[Chart] Canvas topilmadi -> Page screenshot")
 
         img = page.screenshot(
+
             clip={
                 "x": 0,
                 "y": 140,
                 "width": 1600,
                 "height": 700,
             },
+
             type="png",
+
         )
 
         print(
@@ -139,29 +166,33 @@ def get_chart(ticker: str):
         img = downloader._capture_chart(page)
 
         if img:
-            print(f"[Chart] Finviz HD OK: {ticker}")
+
+            print(f"[Chart] Finviz HD OK : {ticker}")
 
         return img
 
     except TimeoutError as e:
 
-        print(f"[Chart] Timeout: {e}")
+        print(f"[Chart] Timeout : {e}")
 
     except Error as e:
 
-        print(f"[Chart] Playwright Error: {e}")
+        print(f"[Chart] Playwright Error : {e}")
 
     except Exception as e:
 
-        print(f"[Chart] Error: {e}")
+        print(f"[Chart] Error : {e}")
 
     finally:
 
         try:
 
             if page:
+
                 page.close()
+
         except Exception:
+
             pass
 
     return None
