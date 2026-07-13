@@ -194,13 +194,36 @@ class ChartDownloader:
         Finviz'ning o'z 'Share Chart' -> 'Download' funksiyasi orqali
         toza, rasmiy PNG grafikni yuklab oladi.
         """
+        # Klikni to'sib turadigan yashirin overlay/dim elementlarni olib tashlaymiz
+        try:
+            page.evaluate("""
+                () => {
+                    document.querySelectorAll(
+                        '[class*="ic_dimm"], [class*="ic_under"], [class*="ic_fade"], [class*="overlay"]'
+                    ).forEach(el => {
+                        el.style.pointerEvents = 'none';
+                        el.style.display = 'none';
+                    });
+                }
+            """)
+        except Exception:
+            pass
+
         # "Share" tugmasini topamiz
         share_btn = page.locator(
             'button:has-text("Share"), a:has-text("Share"), [class*="share"]:has-text("Share")'
         ).first
 
         share_btn.wait_for(state="visible", timeout=8000)
-        share_btn.click(timeout=8000)
+        share_btn.scroll_into_view_if_needed(timeout=3000)
+
+        # Force click — overlay bo'lsa ham, elementning o'ziga majburan bosadi
+        try:
+            share_btn.click(timeout=5000, force=True)
+        except Exception:
+            # Force ham ishlamasa, JS orqali to'g'ridan-to'g'ri klik hodisasini chaqiramiz
+            share_btn.evaluate("el => el.click()")
+
         print("[Chart] Share tugmasi bosildi")
 
         # "Share Chart" oynasi to'liq render bo'lishini kutamiz
@@ -213,6 +236,20 @@ class ChartDownloader:
             print("[Chart] 'Share Chart' matni topilmadi, davom etamiz")
 
         page.wait_for_timeout(1500)
+
+        # Yana bir bor overlaylarni tozalaymiz (modal ochilgach yangi overlay chiqishi mumkin)
+        try:
+            page.evaluate("""
+                () => {
+                    document.querySelectorAll(
+                        '[class*="ic_dimm"], [class*="ic_under"], [class*="ic_fade"]'
+                    ).forEach(el => {
+                        el.style.pointerEvents = 'none';
+                    });
+                }
+            """)
+        except Exception:
+            pass
 
         # Diagnostika: modal ichidagi barcha tugmalar matnini chiqaramiz
         try:
@@ -248,8 +285,13 @@ class ChartDownloader:
         if download_btn is None:
             raise Exception("Download tugmasi hech qanday selector bilan topilmadi")
 
+        download_btn.scroll_into_view_if_needed(timeout=3000)
+
         with page.expect_download(timeout=15000) as download_info:
-            download_btn.click(timeout=8000)
+            try:
+                download_btn.click(timeout=8000, force=True)
+            except Exception:
+                download_btn.evaluate("el => el.click()")
             print("[Chart] Download tugmasi bosildi")
 
         download = download_info.value
