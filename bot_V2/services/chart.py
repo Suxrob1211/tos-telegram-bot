@@ -85,6 +85,21 @@ class ChartDownloader:
                             el.remove();
                         });
                     });
+
+                    // Matn ichida "Compare" yoki "fundamentals" so'zi bo'lgan
+                    // kichik overlay/tooltip elementlarni ham topib o'chiramiz
+                    document.querySelectorAll('div, span, section').forEach(el => {
+                        const text = (el.textContent || '').trim();
+                        if (
+                            text.length > 0 && text.length < 300 &&
+                            (text.includes('New Compare') ||
+                             text.includes('multi-timeframe') ||
+                             text.includes('sector ranking'))
+                        ) {
+                            el.style.display = 'none';
+                            el.remove();
+                        }
+                    });
                 }
             """)
         except Exception:
@@ -97,18 +112,33 @@ class ChartDownloader:
         )
 
         # Sahifa qayta chizilishi uchun kichik kutish
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1200)
 
         # Yana bir marta banner tozalash (kech chiqadigan tooltiplar uchun)
         try:
             page.evaluate("""
                 () => {
-                    document.querySelectorAll('[class*="tooltip"], [class*="popup"], [class*="new-compare"]')
+                    document.querySelectorAll('[class*="tooltip"], [class*="popup"], [class*="new-compare"], [class*="banner"]')
                         .forEach(el => { el.style.display = 'none'; el.remove(); });
+
+                    document.querySelectorAll('div, span, section').forEach(el => {
+                        const text = (el.textContent || '').trim();
+                        if (
+                            text.length > 0 && text.length < 300 &&
+                            (text.includes('New Compare') ||
+                             text.includes('multi-timeframe') ||
+                             text.includes('sector ranking'))
+                        ) {
+                            el.style.display = 'none';
+                            el.remove();
+                        }
+                    });
                 }
             """)
         except Exception:
             pass
+
+        page.wait_for_timeout(300)
 
         title = page.title()
 
