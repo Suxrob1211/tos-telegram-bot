@@ -3,14 +3,82 @@ from services.browser import browser_manager
 
 FINVIZ_URL = "https://finviz.com/quote.ashx?t={ticker}&p=d&r=m6"
 
+# Layout siljishi (reflow) va xotira sarfini keltirib chiqaradigan
+# reklama/tracker domenlari - bularni bloklaymiz
+BLOCKED_DOMAINS = [
+    "doubleclick.net", "googlesyndication", "google-analytics",
+    "googletagmanager", "adsystem", "facebook.net", "amazon-adsystem",
+    "criteo", "taboola", "outbrain", "adnxs.com", "adservice.google",
+]
+
 
 class ChartDownloader:
 
     def __init__(self):
         browser_manager.start()
 
+    def _block_ads(self, page):
+        def _route_handler(route):
+            req = route.request
+            try:
+                if any(b in req.url for b in BLOCKED_DOMAINS) or req.resource_type == "media":
+                    route.abort()
+                else:
+                    route.continue_()
+            except Exception:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        try:
+            page.route("**/*", _route_handler)
+        except Exception as e:
+            print(f"[Chart] Route bloklashda xato: {e}")
+
+    def _safe_click(self, page, locator, label: str):
+        """
+        scroll_into_view_if_needed / click dagi 'stability' timeout muammosidan
+        qochish uchun bosqichma-bosqich zaxira usullar bilan bosadi:
+        1) scroll_into_view_if_needed (qisqa timeout, xato bo'lsa e'tiborsiz)
+        2) oddiy click(force=True)
+        3) bounding_box() orqali mouse koordinatasiga bosish
+        4) JS orqali .click()
+        """
+        try:
+            locator.scroll_into_view_if_needed(timeout=1500)
+        except Exception:
+            print(f"[Chart] {label}: scroll_into_view timeout, davom etamiz")
+
+        try:
+            locator.click(timeout=4000, force=True)
+            print(f"[Chart] {label} bosildi (click)")
+            return
+        except Exception as e:
+            print(f"[Chart] {label} click xato: {e}")
+
+        try:
+            box = locator.bounding_box()
+            if box:
+                x = box["x"] + box["width"] / 2
+                y = box["y"] + box["height"] / 2
+                page.mouse.move(x, y)
+                page.mouse.click(x, y)
+                print(f"[Chart] {label} bosildi (mouse coord)")
+                return
+        except Exception as e:
+            print(f"[Chart] {label} mouse click xato: {e}")
+
+        try:
+            locator.evaluate("el => el.click()")
+            print(f"[Chart] {label} bosildi (JS click)")
+        except Exception as e:
+            print(f"[Chart] {label} JS click ham xato: {e}")
+            raise
+
     def _open_page(self, ticker: str):
         page = browser_manager.new_page()
+        self._block_ads(page)
 
         print(f"[Chart] Page id: {id(page)}")
         print(f"[Chart] Opening {ticker}")
@@ -70,6 +138,11 @@ class ChartDownloader:
 
         try:
             page.reload(wait_until="domcontentloaded", timeout=20000)
+        except Exception:
+            pass
+
+        try:
+            page.wait_for_load_state("networkidle", timeout=5000)
         except Exception:
             pass
 
@@ -151,12 +224,10 @@ class ChartDownloader:
             img = Image.open(_io.BytesIO(img_bytes))
             w, h = img.size
 
-            # Faqat kichik bo'lsa kattalashtirамиз
             if w >= target_width:
                 print(f"[Chart] Rasm allaqachon yetarli katta: {w}x{h}")
                 return img_bytes
 
-            # Proporsional yangi o'lcham
             scale = target_width / w
             new_w = int(w * scale)
             new_h = int(h * scale)
@@ -198,14 +269,7 @@ class ChartDownloader:
         ).first
 
         share_btn.wait_for(state="visible", timeout=8000)
-        share_btn.scroll_into_view_if_needed(timeout=3000)
-
-        try:
-            share_btn.click(timeout=5000, force=True)
-        except Exception:
-            share_btn.evaluate("el => el.click()")
-
-        print("[Chart] Share tugmasi bosildi")
+        self._safe_click(page, share_btn, "Share tugmasi")
 
         try:
             page.wait_for_selector('text="Share Chart"', timeout=5000)
@@ -260,14 +324,8 @@ class ChartDownloader:
         if download_btn is None:
             raise Exception("Download tugmasi topilmadi")
 
-        download_btn.scroll_into_view_if_needed(timeout=3000)
-
         with page.expect_download(timeout=15000) as download_info:
-            try:
-                download_btn.click(timeout=8000, force=True)
-            except Exception:
-                download_btn.evaluate("el => el.click()")
-            print("[Chart] Download tugmasi bosildi")
+            self._safe_click(page, download_btn, "Download tugmasi")
 
         download = download_info.value
 
@@ -287,7 +345,6 @@ class ChartDownloader:
 
         print(f"[Chart] Share->Download OK ({len(img_bytes)//1024} KB)")
 
-        # Proporsional kattalashtirish (hech narsa kesilmaydi)
         img_bytes = self._scale_image(img_bytes, target_width=1400)
 
         try:
