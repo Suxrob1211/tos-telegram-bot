@@ -151,7 +151,12 @@ class ChartDownloader:
             print("[Chart] First timeout -> retry")
             page.goto(url, wait_until="commit", timeout=30000)
 
-        page.set_viewport_size({"width": 1600, "height": 1200})
+        page.set_viewport_size({
+            "width": 1100,
+            "height": 850,
+        })
+
+        page.wait_for_timeout(1500)
 
         try:
             page.evaluate(LIGHT_THEME_JS)
