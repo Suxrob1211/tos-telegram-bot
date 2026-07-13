@@ -1,5 +1,3 @@
-import time
-
 from playwright.sync_api import Error, TimeoutError
 
 from services.browser import browser_manager
@@ -23,20 +21,26 @@ class ChartDownloader:
 
         page.goto(
             url,
-            wait_until="domcontentloaded",
+            wait_until="load",
             timeout=60000,
         )
 
-        page.set_viewport_size(
-            {
-                "width": 1600,
-                "height": 1200,
-            }
+        page.set_viewport_size({
+            "width": 1600,
+            "height": 1200,
+        })
+
+        page.locator("canvas").first.wait_for(
+            state="visible",
+            timeout=10000,
         )
 
-        page.wait_for_timeout(3000)
+        title = page.title()
 
-        print(f"[Chart] Title: {page.title()}")
+        print(f"[Chart] Title: {title}")
+
+        if "Stock Price" not in title:
+            raise Exception(f"Unexpected Finviz page: {title}")
 
         return page
 
@@ -45,14 +49,10 @@ class ChartDownloader:
         print("[Chart] Searching chart...")
 
         selectors = [
-
             "canvas.second",
             "canvas",
-
             "div[id^='chart'] canvas",
-
             "div[class*='chart'] canvas",
-
         ]
 
         chart = None
@@ -61,25 +61,23 @@ class ChartDownloader:
 
             try:
 
-                locator = page.locator(selector)
+                locator = page.locator(selector).first
 
-                if locator.count() > 0:
+                locator.wait_for(
+                    state="visible",
+                    timeout=3000,
+                )
 
-                    chart = locator.first
+                chart = locator
 
-                    chart.wait_for(
-                        state="visible",
-                        timeout=5000,
-                    )
+                print(f"[Chart] Found: {selector}")
 
-                    print(f"[Chart] Found: {selector}")
-
-                    break
+                break
 
             except Exception:
-                pass
+                continue
 
-        if chart is not None:
+        if chart:
 
             try:
 
@@ -92,7 +90,7 @@ class ChartDownloader:
                     )
 
                 img = chart.screenshot(
-                    type="png"
+                    type="png",
                 )
 
                 print(
@@ -105,10 +103,15 @@ class ChartDownloader:
 
                 print(f"[Chart] Canvas screenshot failed: {e}")
 
-        print("[Chart] Canvas not found -> Full page screenshot")
+        print("[Chart] Canvas not found -> Page screenshot")
 
         img = page.screenshot(
-            full_page=False,
+            clip={
+                "x": 0,
+                "y": 140,
+                "width": 1600,
+                "height": 700,
+            },
             type="png",
         )
 
@@ -129,7 +132,12 @@ def get_chart(ticker: str):
 
         page = downloader._open_page(ticker)
 
-        return downloader._capture_chart(page)
+        img = downloader._capture_chart(page)
+
+        if img:
+            print(f"[Chart] Finviz HD OK: {ticker}")
+
+        return img
 
     except TimeoutError as e:
 
@@ -149,7 +157,6 @@ def get_chart(ticker: str):
 
             if page:
                 page.close()
-
         except Exception:
             pass
 
