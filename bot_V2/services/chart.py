@@ -33,7 +33,6 @@ IS_DARK_JS = """
           || getComputedStyle(document.body).backgroundColor.includes('19, 23, 34')
 """
 
-# Toggle selektorlar - eng aniqrog'i (Finviz brightness toggle) birinchi o'rinda
 TOGGLE_SELECTORS = [
     'div.rounded-full.w-10.h-5:has(svg use[href*="brightness"])',
     'button[aria-label*="theme" i]',
@@ -71,10 +70,6 @@ class ChartDownloader:
             print(f"[Chart] Route bloklashda xato: {e}")
 
     def _force_light_all_frames(self, page):
-        """
-        Asosiy sahifa + barcha iframe'larda light temani majburlaydi.
-        Agar hali ham 'dark' deb aniqlansa, mos toggle tugmasini bosadi.
-        """
         for frame in page.frames:
             try:
                 frame.evaluate(LIGHT_THEME_JS)
@@ -100,7 +95,7 @@ class ChartDownloader:
                 except Exception:
                     continue
 
-    def _safe_click(self, page, locator, label: str):
+    def _safe_click(self, page, locator, label):
         try:
             locator.scroll_into_view_if_needed(timeout=1500)
         except Exception:
@@ -132,7 +127,7 @@ class ChartDownloader:
             print(f"[Chart] {label} JS click ham xato: {e}")
             raise
 
-    def _open_page(self, ticker: str):
+    def _open_page(self, ticker):
         page = browser_manager.new_page()
         self._block_ads(page)
 
@@ -163,7 +158,6 @@ class ChartDownloader:
         except Exception:
             pass
 
-        # 1-urinish: reload'dan oldin, sahifa navigatsiya toggle'ni bosib ko'ramiz
         self._force_light_all_frames(page)
 
         try:
@@ -176,7 +170,6 @@ class ChartDownloader:
         except Exception:
             pass
 
-        # 2-urinish: reload'dan keyin
         page.wait_for_timeout(1000)
         self._force_light_all_frames(page)
 
@@ -214,7 +207,6 @@ class ChartDownloader:
         page.locator("canvas").first.wait_for(state="visible", timeout=15000)
         page.wait_for_timeout(1200)
 
-        # 3-urinish: canvas to'liq yuklangandan keyin
         self._force_light_all_frames(page)
 
         try:
@@ -248,51 +240,20 @@ class ChartDownloader:
 
         return page
 
-    def _scale_image(self, img_bytes: bytes, max_width: int = 1400, max_height: int = 800) -> bytes:
-    """
-    Rasmni max_width x max_height chegarasi ichiga, aspekt nisbatini
-    buzmasdan joylashtiradi - kerak bo'lsa kichiklashtiradi, kerak
-    bo'lsa kattalashtiradi.
-    """
-    try:
-        from PIL import Image
-        import io as _io
-
-        img = Image.open(_io.BytesIO(img_bytes))
-        w, h = img.size
-
-        scale = min(max_width / w, max_height / h)
-
-        if abs(scale - 1.0) < 0.01:
-            print(f"[Chart] Rasm o'lchami mos: {w}x{h}")
-            return img_bytes
-
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
-        img = img.resize((new_w, new_h), Image.LANCZOS)
-
-        out = _io.BytesIO()
-        img.save(out, format="PNG")
-        result = out.getvalue()
-
-        action = "Kichiklashtirish" if scale < 1 else "Kattalashtirish"
-        print(f"[Chart] {action}: {w}x{h} -> {new_w}x{new_h}")
-        return result
-
-    except Exception as e:
-        print(f"[Chart] Resize xato (asl rasm ishlatiladi): {e}")
-        return img_bytes
-
+    def _scale_image(self, img_bytes, max_width=1400, max_height=800):
+        try:
+            from PIL import Image
+            import io as _io
 
             img = Image.open(_io.BytesIO(img_bytes))
             w, h = img.size
 
-            if w >= target_width:
-                print(f"[Chart] Rasm allaqachon yetarli katta: {w}x{h}")
+            scale = min(max_width / w, max_height / h)
+
+            if abs(scale - 1.0) < 0.01:
+                print(f"[Chart] Rasm o'lchami mos: {w}x{h}")
                 return img_bytes
 
-            scale = target_width / w
             new_w = int(w * scale)
             new_h = int(h * scale)
 
@@ -302,7 +263,8 @@ class ChartDownloader:
             img.save(out, format="PNG")
             result = out.getvalue()
 
-            print(f"[Chart] Resize: {w}x{h} -> {new_w}x{new_h}")
+            action = "Kichiklashtirish" if scale < 1 else "Kattalashtirish"
+            print(f"[Chart] {action}: {w}x{h} -> {new_w}x{new_h}")
             return result
 
         except Exception as e:
@@ -485,7 +447,7 @@ class ChartDownloader:
             return None
 
 
-def get_chart(ticker: str):
+def get_chart(ticker):
     page = None
     try:
         downloader = ChartDownloader()
