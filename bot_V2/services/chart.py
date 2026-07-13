@@ -21,8 +21,8 @@ class ChartDownloader:
 
         page.goto(
             url,
-            wait_until="load",
-            timeout=60000,
+            wait_until="domcontentloaded",
+            timeout=30000,
         )
 
         page.set_viewport_size({
@@ -30,9 +30,9 @@ class ChartDownloader:
             "height": 1200,
         })
 
-        page.locator("canvas").first.wait_for(
+        page.locator("canvas.second").wait_for(
             state="visible",
-            timeout=10000,
+            timeout=15000,
         )
 
         title = page.title()
