@@ -77,7 +77,7 @@ class BrowserManager:
                     "height": 1200,
                 },
 
-                accept_downloads=False,
+                accept_downloads=True,
 
                 locale="en-US",
 
@@ -119,7 +119,7 @@ class BrowserManager:
 
                 no_viewport=True,
 
-                accept_downloads=False,
+                accept_downloads=True,
 
                 color_scheme="light",
 
