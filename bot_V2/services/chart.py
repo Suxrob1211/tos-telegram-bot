@@ -13,6 +13,10 @@ class ChartDownloader:
     def _open_page(self, ticker: str):
 
         page = browser_manager.new_page()
+        
+        print(f"[Chart] Page id: {id(page)}")
+
+        print(f"[Chart] Opening {ticker}")
 
         url = FINVIZ_URL.format(ticker=ticker.upper())
 
