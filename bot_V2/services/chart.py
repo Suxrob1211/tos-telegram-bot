@@ -33,7 +33,9 @@ IS_DARK_JS = """
           || getComputedStyle(document.body).backgroundColor.includes('19, 23, 34')
 """
 
+# Toggle selektorlar - eng aniqrog'i (Finviz brightness toggle) birinchi o'rinda
 TOGGLE_SELECTORS = [
+    'div.rounded-full.w-10.h-5:has(svg use[href*="brightness"])',
     'button[aria-label*="theme" i]',
     'button[title*="theme" i]',
     'button[data-name*="theme" i]',
@@ -70,9 +72,8 @@ class ChartDownloader:
 
     def _force_light_all_frames(self, page):
         """
-        Chart odatda alohida iframe ichida ishlaydi, shuning uchun
-        light-tema skriptini asosiy sahifa + barcha iframe'larda ishga
-        tushiramiz.
+        Asosiy sahifa + barcha iframe'larda light temani majburlaydi.
+        Agar hali ham 'dark' deb aniqlansa, mos toggle tugmasini bosadi.
         """
         for frame in page.frames:
             try:
@@ -93,7 +94,8 @@ class ChartDownloader:
                     toggle = frame.locator(sel).first
                     if toggle.count() > 0:
                         toggle.click(timeout=1500, force=True)
-                        print(f"[Chart] Frame theme toggle bosildi: {sel}")
+                        print(f"[Chart] Frame theme toggle bosildi: {sel} (url={frame.url})")
+                        frame.wait_for_timeout(500)
                         break
                 except Exception:
                     continue
@@ -161,6 +163,9 @@ class ChartDownloader:
         except Exception:
             pass
 
+        # 1-urinish: reload'dan oldin, sahifa navigatsiya toggle'ni bosib ko'ramiz
+        self._force_light_all_frames(page)
+
         try:
             page.reload(wait_until="domcontentloaded", timeout=20000)
         except Exception:
@@ -171,8 +176,7 @@ class ChartDownloader:
         except Exception:
             pass
 
-        # Chart iframe yuklanishi uchun ozroq kutamiz, so'ng barcha
-        # frame'larda light temani majburlab qo'yamiz
+        # 2-urinish: reload'dan keyin
         page.wait_for_timeout(1000)
         self._force_light_all_frames(page)
 
@@ -210,8 +214,7 @@ class ChartDownloader:
         page.locator("canvas").first.wait_for(state="visible", timeout=15000)
         page.wait_for_timeout(1200)
 
-        # Canvas yuklanganidan keyin yana bir marta light tekshirish
-        # (ba'zan chart o'zi keyinroq dark bo'lib qayta chiziladi)
+        # 3-urinish: canvas to'liq yuklangandan keyin
         self._force_light_all_frames(page)
 
         try:
