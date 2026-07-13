@@ -48,11 +48,23 @@ class BrowserManager:
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
+
                     "--disable-gpu",
                     "--disable-software-rasterizer",
+
                     "--disable-blink-features=AutomationControlled",
-                    "--disable-background-networking"
+
+                    "--disable-background-networking",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+
                     "--disable-extensions",
+
+                    "--mute-audio",
+
+                    "--no-first-run",
+                    "--no-default-browser-check",
 
                 ],
 
@@ -65,7 +77,7 @@ class BrowserManager:
                     "height": 1200,
                 },
 
-                accept_downloads=True,
+                accept_downloads=False,
 
                 locale="en-US",
 
@@ -73,19 +85,23 @@ class BrowserManager:
 
                 color_scheme="light",
 
+                device_scale_factor=1,
+
                 user_agent=(
+
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/138.0.7204.169 Safari/537.36"
+
                 ),
 
             )
 
-            self.context.set_extra_http_headers(
-                {
-                    "Accept-Language": "en-US,en;q=0.9",
-                }
-            )
+            self.context.set_extra_http_headers({
+
+                "Accept-Language": "en-US,en;q=0.9"
+
+            })
 
         else:
 
@@ -103,11 +119,13 @@ class BrowserManager:
 
                 no_viewport=True,
 
-                accept_downloads=True,
+                accept_downloads=False,
 
                 args=[
+
                     "--start-maximized",
                     "--disable-blink-features=AutomationControlled",
+
                 ],
 
             )
@@ -117,23 +135,24 @@ class BrowserManager:
 
     def new_page(self):
 
-        if not self.context:
+        if self.context is None:
+
             self.start()
 
         page = self.context.new_page()
 
-        page.set_viewport_size(
-            {
-                "width": 1600,
-                "height": 1200,
-            }
-        )
+        page.set_viewport_size({
 
-        page.set_extra_http_headers(
-            {
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-        )
+            "width": 1600,
+            "height": 1200,
+
+        })
+
+        page.set_extra_http_headers({
+
+            "Accept-Language": "en-US,en;q=0.9"
+
+        })
 
         return page
 
