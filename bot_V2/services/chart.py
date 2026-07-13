@@ -177,7 +177,7 @@ class ChartDownloader:
             "height": 850,
         })
 
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(1000)
 
         try:
             page.evaluate(LIGHT_THEME_JS)
