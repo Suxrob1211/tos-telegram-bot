@@ -47,24 +47,12 @@ class BrowserManager:
 
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
-
                     "--disable-dev-shm-usage",
-
+                    "--disable-gpu",
+                    "--disable-software-rasterizer",
                     "--disable-blink-features=AutomationControlled",
-
-                    "--disable-background-networking",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows",
-                    "--disable-renderer-backgrounding",
-
+                    "--disable-background-networking"
                     "--disable-extensions",
-
-                    "--disable-sync",
-
-                    "--mute-audio",
-
-                    "--no-first-run",
-                    "--no-default-browser-check",
 
                 ],
 
