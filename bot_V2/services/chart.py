@@ -203,14 +203,50 @@ class ChartDownloader:
         share_btn.click(timeout=8000)
         print("[Chart] Share tugmasi bosildi")
 
-        # "Share Chart" oynasi ochilishini kutamiz
-        page.wait_for_timeout(1000)
+        # "Share Chart" oynasi to'liq render bo'lishini kutamiz
+        try:
+            page.wait_for_selector(
+                'text="Share Chart"', timeout=5000
+            )
+            print("[Chart] 'Share Chart' modal topildi")
+        except Exception:
+            print("[Chart] 'Share Chart' matni topilmadi, davom etamiz")
 
-        # "Download" tugmasini topamiz va bosishdan oldin yuklanishni kutamiz
-        download_btn = page.locator(
-            'button:has-text("Download"), a:has-text("Download")'
-        ).first
-        download_btn.wait_for(state="visible", timeout=8000)
+        page.wait_for_timeout(1500)
+
+        # Diagnostika: modal ichidagi barcha tugmalar matnini chiqaramiz
+        try:
+            btn_texts = page.eval_on_selector_all(
+                "button, a",
+                "els => els.map(e => e.textContent.trim()).filter(t => t.length > 0 && t.length < 40)"
+            )
+            print(f"[Chart] Sahifadagi tugmalar: {btn_texts[:30]}")
+        except Exception as e:
+            print(f"[Chart] Diagnostika xato: {e}")
+
+        # "Download" tugmasini bir nechta usulda qidiramiz
+        download_selectors = [
+            'button:has-text("Download")',
+            'a:has-text("Download")',
+            '[class*="download"]',
+            'button[title*="Download" i]',
+            'a[download]',
+        ]
+
+        download_btn = None
+        for sel in download_selectors:
+            try:
+                loc = page.locator(sel).first
+                if loc.count() > 0:
+                    loc.wait_for(state="visible", timeout=3000)
+                    download_btn = loc
+                    print(f"[Chart] Download tugma topildi: {sel}")
+                    break
+            except Exception:
+                continue
+
+        if download_btn is None:
+            raise Exception("Download tugmasi hech qanday selector bilan topilmadi")
 
         with page.expect_download(timeout=15000) as download_info:
             download_btn.click(timeout=8000)
