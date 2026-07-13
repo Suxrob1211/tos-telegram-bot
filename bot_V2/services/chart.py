@@ -189,6 +189,64 @@ class ChartDownloader:
 
         return page
 
+    def _capture_via_share_download(self, page):
+        """
+        Finviz'ning o'z 'Share Chart' -> 'Download' funksiyasi orqali
+        toza, rasmiy PNG grafikni yuklab oladi.
+        """
+        # "Share" tugmasini topamiz
+        share_btn = page.locator(
+            'button:has-text("Share"), a:has-text("Share"), [class*="share"]:has-text("Share")'
+        ).first
+
+        share_btn.wait_for(state="visible", timeout=5000)
+        share_btn.click()
+        print("[Chart] Share tugmasi bosildi")
+
+        # "Share Chart" oynasi ochilishini kutamiz
+        page.wait_for_timeout(800)
+
+        # "Download" tugmasini topamiz va bosishdan oldin yuklanishni kutamiz
+        download_btn = page.locator(
+            'button:has-text("Download"), a:has-text("Download")'
+        ).first
+        download_btn.wait_for(state="visible", timeout=5000)
+
+        with page.expect_download(timeout=15000) as download_info:
+            download_btn.click()
+            print("[Chart] Download tugmasi bosildi")
+
+        download = download_info.value
+
+        # Yuklab olingan faylni vaqtinchalik joyga saqlab, o'qib olamiz
+        import tempfile
+        import os as _os
+
+        tmp_path = _os.path.join(tempfile.gettempdir(), download.suggested_filename)
+        download.save_as(tmp_path)
+
+        with open(tmp_path, "rb") as f:
+            img_bytes = f.read()
+
+        try:
+            _os.remove(tmp_path)
+        except Exception:
+            pass
+
+        print(f"[Chart] Share->Download orqali olindi ({len(img_bytes)//1024} KB)")
+
+        # Oynani yopamiz (keyingi ticker uchun tozalik)
+        try:
+            close_btn = page.locator(
+                'button:has-text("Close"), [class*="modal"] button[class*="close"]'
+            ).first
+            if close_btn.count() > 0:
+                close_btn.click(timeout=1000)
+        except Exception:
+            pass
+
+        return img_bytes
+
     def _find_chart(self, page):
 
         # Avval to'liq grafik konteynerini qidiramiz (canvas emas —
@@ -254,7 +312,17 @@ class ChartDownloader:
 
     def _capture_chart(self, page):
 
-        print("[Chart] Searching chart...")
+        # 1-usul: Finviz'ning o'z Share -> Download funksiyasi orqali
+        # (eng toza, rasmiy grafik)
+        try:
+            img = self._capture_via_share_download(page)
+            if img:
+                return img
+        except Exception as e:
+            print(f"[Chart] Share->Download muvaffaqiyatsiz: {e}")
+
+        # 2-usul (zaxira): to'g'ridan-to'g'ri screenshot
+        print("[Chart] Zaxira usul: screenshot")
 
         chart = self._find_chart(page)
 
