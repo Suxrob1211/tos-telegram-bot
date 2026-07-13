@@ -129,7 +129,25 @@ class ChartDownloader:
 
     def _open_page(self, ticker):
         page = browser_manager.new_page()
+
         self._block_ads(page)
+        
+        page.add_init_script(LIGHT_THEME_JS)
+        
+        page.context.add_cookies(...)
+            {
+                 "name": "theme",
+                 "value": "light",
+                 "domain": ".finviz.com",
+                 "path": "/",
+            },
+            {
+                "name": "darkMode",
+                "value": "false",
+                "domain": ".finviz.com",
+                "path": "/",
+            },
+        ])
 
         print(f"[Chart] Page id: {id(page)}")
         print(f"[Chart] Opening {ticker}")
