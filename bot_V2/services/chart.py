@@ -30,12 +30,32 @@ LIGHT_THEME_JS = """
     }
 """
 
+# Finviz theme toggle ikonkasiga qarab dark/light aniqlaydi
 IS_DARK_JS = """
-    () => document.documentElement.classList.contains('dark')
-          || document.body.classList.contains('dark')
-          || getComputedStyle(document.body).backgroundColor.includes('rgb(0')
-          || getComputedStyle(document.body).backgroundColor.includes('19, 23, 34')
+    () => {
+        try {
+            const use = document.querySelector(
+                'div.rounded-full.w-10.h-5 use[href*="brightness"]'
+            );
+            if (use) {
+                const href = use.getAttribute('href') || '';
+                // brightness1Outlined = dark (oy), brightnessHigh/sun = light
+                if (href.includes('brightness1')) return true;   // dark
+                if (href.includes('brightnessHigh') || href.toLowerCase().includes('sun')) return false;
+            }
+        } catch (e) {}
+        return document.documentElement.classList.contains('dark')
+            || document.body.classList.contains('dark')
+            || getComputedStyle(document.body).backgroundColor.includes('19, 23, 34');
+    }
 """
+
+# Finviz header theme toggle (dark<->light)
+THEME_TOGGLE_SELECTORS = [
+    'div.rounded-full.w-10.h-5:has(use[href*="brightness"])',
+    'div.rounded-full.w-10.h-5:has(svg)',
+    'div[class*="rounded-full"][class*="w-10"][class*="h-5"]:has(use[href*="brightness"])',
+]
 
 TOGGLE_SELECTORS = [
     'div.rounded-full.w-10.h-5:has(svg use[href*="brightness"])',
@@ -50,22 +70,13 @@ TOGGLE_SELECTORS = [
 
 
 def _force_light_url(url):
-    """Chart URL'idagi temani light ga majburlaydi.
-
-    - theme=dark  -> theme=light
-    - theme yo'q  -> theme=light qo'shiladi
-    - qisqa 'ty=' yoki boshqa dark belgilar ham tekshiriladi
-    """
+    """Chart URL'idagi temani light ga majburlaydi."""
     if not url:
         return None
-
     try:
         parsed = urlparse(url)
         qs = parse_qs(parsed.query, keep_blank_values=True)
-
         changed = False
-
-        # theme parametri
         theme_val = qs.get("theme", [None])[0]
         if theme_val is None:
             qs["theme"] = ["light"]
@@ -73,16 +84,11 @@ def _force_light_url(url):
         elif theme_val.lower() != "light":
             qs["theme"] = ["light"]
             changed = True
-
         new_query = urlencode(qs, doseq=True)
         new_url = urlunparse(parsed._replace(query=new_query))
-
-        # Ba'zi finviz variantlarida tema query'da emas, matnda bo'lishi mumkin
         new_url = re.sub(r"theme=dark", "theme=light", new_url, flags=re.IGNORECASE)
-
         return new_url if (changed or new_url != url) else url
     except Exception:
-        # Oddiy string almashtirish (zaxira)
         if "theme=dark" in url:
             return url.replace("theme=dark", "theme=light")
         if "theme=" not in url:
@@ -114,6 +120,43 @@ class ChartDownloader:
             page.route("**/*", _route_handler)
         except Exception as e:
             print(f"[Chart] Route bloklashda xato: {e}")
+
+    def _set_finviz_light_theme(self, page):
+        """Finviz header'dagi theme toggle'ni light ga o'tkazadi."""
+        try:
+            is_dark = page.evaluate(IS_DARK_JS)
+            print(f"[Chart] Sahifa dark holatda: {is_dark}")
+            if not is_dark:
+                print("[Chart] Sahifa allaqachon light")
+                return
+        except Exception:
+            pass
+
+        for sel in THEME_TOGGLE_SELECTORS:
+            try:
+                toggle = page.locator(sel).first
+                if toggle.count() == 0:
+                    continue
+
+                try:
+                    toggle.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+
+                toggle.click(timeout=2500, force=True)
+                print(f"[Chart] Theme toggle bosildi: {sel}")
+                page.wait_for_timeout(1000)
+
+                if not page.evaluate(IS_DARK_JS):
+                    print("[Chart] Light ga o'tdi ✅")
+                    return
+                else:
+                    print("[Chart] Hali dark, keyingi selektor...")
+            except Exception as e:
+                print(f"[Chart] Toggle xato ({sel}): {e}")
+                continue
+
+        print("[Chart] Theme toggle ishlamadi")
 
     def _force_light_all_frames(self, page):
         for frame in page.frames:
@@ -206,6 +249,9 @@ class ChartDownloader:
 
         page.wait_for_timeout(1500)
 
+        # Finviz'ning o'z theme toggle'ini light ga o'tkazamiz (asosiy yechim)
+        self._set_finviz_light_theme(page)
+
         try:
             page.evaluate(LIGHT_THEME_JS)
         except Exception:
@@ -224,6 +270,9 @@ class ChartDownloader:
             pass
 
         page.wait_for_timeout(1000)
+
+        # Reload'dan keyin yana tekshiramiz
+        self._set_finviz_light_theme(page)
         self._force_light_all_frames(page)
 
         try:
@@ -260,6 +309,7 @@ class ChartDownloader:
         page.locator("canvas").first.wait_for(state="visible", timeout=15000)
         page.wait_for_timeout(1200)
 
+        self._set_finviz_light_theme(page)
         self._force_light_all_frames(page)
 
         try:
@@ -325,6 +375,9 @@ class ChartDownloader:
             return img_bytes
 
     def _capture_via_share_download(self, page):
+        # Download oldidan yana theme light ekanini kafolatlaymiz
+        self._set_finviz_light_theme(page)
+
         try:
             page.evaluate("""
                 () => {
@@ -390,17 +443,26 @@ class ChartDownloader:
         if download_btn is None:
             raise Exception("Download tugmasi topilmadi")
 
-        # Chart so'rovining URL'ini ushlab olamiz (tema aniqlash uchun)
+        # Chart so'rovining URL'ini ushlab olamiz (zaxira sifatida temani majburlash uchun)
         captured_url = {"value": None}
 
         def _on_request(request):
             u = request.url
             low = u.lower()
-            if "chart" in low and any(k in low for k in
-                                      ["chart.ashx", ".png", ".jpg", ".jpeg", "theme=", "charts"]):
+            if (("chart.ashx" in low)
+                    or ("finviz.com/chart" in low)
+                    or ("charts" in low and "finviz" in low)):
+                captured_url["value"] = u
+
+        def _on_response(response):
+            u = response.url
+            low = u.lower()
+            ct = (response.headers or {}).get("content-type", "")
+            if "image" in ct.lower() and "finviz" in low:
                 captured_url["value"] = u
 
         page.on("request", _on_request)
+        page.on("response", _on_response)
 
         img_bytes = None
         try:
@@ -427,13 +489,17 @@ class ChartDownloader:
                 page.remove_listener("request", _on_request)
             except Exception:
                 pass
+            try:
+                page.remove_listener("response", _on_response)
+            except Exception:
+                pass
 
-        # URL orqali temani light ga majburlab, rasmni qayta yuklaymiz
+        # Zaxira: agar ushlangan URL'da tema dark bo'lsa, light ga o'zgartirib qayta yuklaymiz
         src_url = captured_url["value"]
-        if src_url:
+        if src_url and "theme=dark" in src_url.lower():
             light_url = _force_light_url(src_url)
             if light_url and light_url != src_url:
-                print(f"[Chart] Chart URL topildi, light ga o'zgartirildi:\n  {light_url}")
+                print(f"[Chart] Dark chart URL topildi, light ga o'zgartirildi:\n  {light_url}")
                 try:
                     resp = page.request.get(light_url, timeout=15000)
                     if resp.ok:
@@ -441,16 +507,8 @@ class ChartDownloader:
                         if body and len(body) > 1000:
                             img_bytes = body
                             print("[Chart] Light versiya URL orqali yuklandi")
-                        else:
-                            print("[Chart] Light URL javobi bo'sh, download rasmi ishlatiladi")
-                    else:
-                        print(f"[Chart] Light URL status: {resp.status}")
                 except Exception as e:
                     print(f"[Chart] Light URL yuklashda xato: {e}")
-            else:
-                print("[Chart] Chart URL allaqachon light yoki temasi yo'q")
-        else:
-            print("[Chart] Chart URL ushlanmadi, download rasmi ishlatiladi")
 
         if not img_bytes:
             raise Exception("Download rasmi olinmadi")
