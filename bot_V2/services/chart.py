@@ -47,11 +47,68 @@ class ChartDownloader:
             }
         )
 
+        # Finviz'ni majburan kunduzgi (light) rejimga o'tkazamiz
+        try:
+            page.evaluate("""
+                () => {
+                    try {
+                        localStorage.setItem('theme', 'light');
+                        localStorage.setItem('darkMode', 'false');
+                        document.cookie = 'theme=light; path=/';
+                        document.documentElement.classList.remove('dark');
+                        document.documentElement.setAttribute('data-theme', 'light');
+                    } catch (e) {}
+                }
+            """)
+        except Exception:
+            pass
+
+        # Reklama / cookie / tooltip bannerlarini yopamiz
+        try:
+            page.evaluate("""
+                () => {
+                    const selectors = [
+                        '[class*="cookie"]',
+                        '[class*="consent"]',
+                        '[class*="tooltip"]',
+                        '[class*="popup"]',
+                        '[class*="banner"]',
+                        '[id*="cookie"]',
+                        '[class*="new-compare"]',
+                        '[class*="promo"]',
+                        '.chart-tooltip',
+                        '.overlay-tooltip',
+                    ];
+                    selectors.forEach(sel => {
+                        document.querySelectorAll(sel).forEach(el => {
+                            el.style.display = 'none';
+                            el.remove();
+                        });
+                    });
+                }
+            """)
+        except Exception:
+            pass
+
         # Grafik chiqishini kutamiz
         page.locator("canvas").first.wait_for(
             state="visible",
             timeout=15000,
         )
+
+        # Sahifa qayta chizilishi uchun kichik kutish
+        page.wait_for_timeout(500)
+
+        # Yana bir marta banner tozalash (kech chiqadigan tooltiplar uchun)
+        try:
+            page.evaluate("""
+                () => {
+                    document.querySelectorAll('[class*="tooltip"], [class*="popup"], [class*="new-compare"]')
+                        .forEach(el => { el.style.display = 'none'; el.remove(); });
+                }
+            """)
+        except Exception:
+            pass
 
         title = page.title()
 
@@ -66,6 +123,34 @@ class ChartDownloader:
 
     def _find_chart(self, page):
 
+        # Avval to'liq grafik konteynerini qidiramiz (canvas emas —
+        # canvas ko'pincha juda ingichka/uzun bo'lib chiqadi)
+        container_selectors = [
+
+            "#chart-container",
+            "div[class*='chart-wrap']",
+            "div[id^='chart']",
+            "div[class*='chart']:has(canvas)",
+
+        ]
+
+        for selector in container_selectors:
+
+            try:
+
+                locator = page.locator(selector).first
+                locator.wait_for(state="visible", timeout=2000)
+
+                box = locator.bounding_box()
+                # Konteyner yetarlicha katta bo'lsa (haqiqiy grafik hudud)
+                if box and box["width"] > 400 and box["height"] > 250:
+                    print(f"[Chart] Found container: {selector}")
+                    return locator
+
+            except Exception:
+                pass
+
+        # Konteyner topilmasa, canvas'ga tushamiz
         selectors = [
 
             "canvas.second",
@@ -117,6 +202,12 @@ class ChartDownloader:
                         f"[Chart] Size : {int(box['width'])}x{int(box['height'])}"
                     )
 
+                    # Agar topilgan element juda ingichka/tor bo'lsa (masalan
+                    # faqat canvas, konteyner emas) — page screenshot'ga o'tamiz
+                    if box["width"] < 400 or box["height"] < 200:
+                        print("[Chart] Element too small, falling back to page screenshot")
+                        raise ValueError("Element too small")
+
                 img = chart.screenshot(
                     type="png",
                 )
@@ -139,7 +230,7 @@ class ChartDownloader:
                 "x": 0,
                 "y": 140,
                 "width": 1600,
-                "height": 700,
+                "height": 850,
             },
 
             type="png",
