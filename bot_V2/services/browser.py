@@ -121,6 +121,8 @@ class BrowserManager:
 
                 accept_downloads=False,
 
+                color_scheme="light",
+
                 args=[
 
                     "--start-maximized",
