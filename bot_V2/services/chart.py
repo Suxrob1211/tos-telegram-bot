@@ -129,28 +129,7 @@ class ChartDownloader:
 
     def _open_page(self, ticker):
         page = browser_manager.new_page()
-        
         self._block_ads(page)
-
-        page.add_init_script(LIGHT_THEME_JS)
-
-        try:
-            page.context.add_cookies([
-                {
-                    "name": "theme",
-                    "value": "light",
-                    "domain": ".finviz.com",
-                    "path": "/",
-                },
-                {
-                    "name": "darkMode",
-                    "value": "false",
-                    "domain": ".finviz.com",
-                    "path": "/",
-                },
-                ])
-            except Exception as e:
-                print(f"[Chart] Cookie error: {e}")
 
         print(f"[Chart] Page id: {id(page)}")
         print(f"[Chart] Opening {ticker}")
@@ -177,7 +156,7 @@ class ChartDownloader:
             "height": 850,
         })
 
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(1500)
 
         try:
             page.evaluate(LIGHT_THEME_JS)
