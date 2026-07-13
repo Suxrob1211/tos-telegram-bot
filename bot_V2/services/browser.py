@@ -19,6 +19,7 @@ class BrowserManager:
                 cls._instance = super().__new__(cls)
 
                 cls._instance.playwright = None
+                cls._instance.browser = None
                 cls._instance.context = None
 
         return cls._instance
@@ -36,45 +37,71 @@ class BrowserManager:
 
             print("[Browser] Railway mode")
 
-            browser = self.playwright.chromium.launch(
+            self.browser = self.playwright.chromium.launch(
+
                 headless=True,
+
                 chromium_sandbox=False,
-                 args=[
+
+                args=[
+
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
+
                     "--disable-dev-shm-usage",
-                    "--disable-gpu",
+
+                    "--disable-blink-features=AutomationControlled",
+
+                    "--disable-background-networking",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+
+                    "--disable-extensions",
+
+                    "--disable-sync",
+
+                    "--mute-audio",
+
+                    "--no-first-run",
+                    "--no-default-browser-check",
+
                 ],
 
             )
 
-            self.context = browser.new_context(
-
-                accept_downloads=True,
+            self.context = self.browser.new_context(
 
                 viewport={
                     "width": 1600,
                     "height": 1200,
                 },
 
+                accept_downloads=True,
+
+                locale="en-US",
+
+                timezone_id="UTC",
+
+                color_scheme="light",
+
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/138.0.0.0 Safari/537.36"
+                    "Chrome/138.0.7204.169 Safari/537.36"
                 ),
 
-                locale="en-US",
-                color_scheme="light",
-                
             )
 
-            self.context.set_extra_http_headers({
-                "Accept-Language": "en-US,en;q=0.9"
-            })    
+            self.context.set_extra_http_headers(
+                {
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+            )
 
         else:
 
-            print("[Browser] Version:", browser.version)
+            print("[Browser] Windows mode")
 
             profile = str(Path.home() / "playwright_profile")
 
@@ -94,9 +121,11 @@ class BrowserManager:
                     "--start-maximized",
                     "--disable-blink-features=AutomationControlled",
                 ],
+
             )
 
-        self.context.set_default_timeout(30000)
+        self.context.set_default_timeout(60000)
+        self.context.set_default_navigation_timeout(60000)
 
     def new_page(self):
 
@@ -105,9 +134,17 @@ class BrowserManager:
 
         page = self.context.new_page()
 
-        page.on(
-            "crash",
-            lambda: print("[Browser] PAGE CRASHED")
+        page.set_viewport_size(
+            {
+                "width": 1600,
+                "height": 1200,
+            }
+        )
+
+        page.set_extra_http_headers(
+            {
+                "Accept-Language": "en-US,en;q=0.9",
+            }
         )
 
         return page
@@ -119,6 +156,9 @@ class BrowserManager:
             if self.context:
                 self.context.close()
 
+            if self.browser:
+                self.browser.close()
+
             if self.playwright:
                 self.playwright.stop()
 
@@ -126,6 +166,7 @@ class BrowserManager:
             pass
 
         self.context = None
+        self.browser = None
         self.playwright = None
 
 
