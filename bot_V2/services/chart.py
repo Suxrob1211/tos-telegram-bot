@@ -1,3 +1,6 @@
+import re
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
 from playwright.sync_api import Error, TimeoutError
 from services.browser import browser_manager
 
@@ -18,6 +21,7 @@ LIGHT_THEME_JS = """
             localStorage.setItem('tv-chart-theme', 'light');
             localStorage.setItem('chart-theme', 'light');
             document.cookie = 'theme=light; path=/';
+            document.cookie = 'chartTheme=light; path=/';
             document.documentElement.classList.remove('dark');
             document.documentElement.classList.add('light');
             document.documentElement.setAttribute('data-theme', 'light');
@@ -43,6 +47,48 @@ TOGGLE_SELECTORS = [
     'button:has(svg[class*="moon" i])',
     'button:has(svg[class*="sun" i])',
 ]
+
+
+def _force_light_url(url):
+    """Chart URL'idagi temani light ga majburlaydi.
+
+    - theme=dark  -> theme=light
+    - theme yo'q  -> theme=light qo'shiladi
+    - qisqa 'ty=' yoki boshqa dark belgilar ham tekshiriladi
+    """
+    if not url:
+        return None
+
+    try:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+
+        changed = False
+
+        # theme parametri
+        theme_val = qs.get("theme", [None])[0]
+        if theme_val is None:
+            qs["theme"] = ["light"]
+            changed = True
+        elif theme_val.lower() != "light":
+            qs["theme"] = ["light"]
+            changed = True
+
+        new_query = urlencode(qs, doseq=True)
+        new_url = urlunparse(parsed._replace(query=new_query))
+
+        # Ba'zi finviz variantlarida tema query'da emas, matnda bo'lishi mumkin
+        new_url = re.sub(r"theme=dark", "theme=light", new_url, flags=re.IGNORECASE)
+
+        return new_url if (changed or new_url != url) else url
+    except Exception:
+        # Oddiy string almashtirish (zaxira)
+        if "theme=dark" in url:
+            return url.replace("theme=dark", "theme=light")
+        if "theme=" not in url:
+            sep = "&" if "?" in url else "?"
+            return f"{url}{sep}theme=light"
+        return url
 
 
 class ChartDownloader:
@@ -141,6 +187,8 @@ class ChartDownloader:
             page.context.add_cookies([
                 {"name": "theme", "value": "light", "domain": ".finviz.com", "path": "/"},
                 {"name": "darkMode", "value": "false", "domain": ".finviz.com", "path": "/"},
+                {"name": "chartTheme", "value": "light", "domain": ".finviz.com", "path": "/"},
+                {"name": "charts", "value": "light", "domain": ".finviz.com", "path": "/"},
             ])
         except Exception as e:
             print(f"[Chart] Cookie sozlashda xato: {e}")
@@ -342,24 +390,70 @@ class ChartDownloader:
         if download_btn is None:
             raise Exception("Download tugmasi topilmadi")
 
-        with page.expect_download(timeout=15000) as download_info:
-            self._safe_click(page, download_btn, "Download tugmasi")
+        # Chart so'rovining URL'ini ushlab olamiz (tema aniqlash uchun)
+        captured_url = {"value": None}
 
-        download = download_info.value
+        def _on_request(request):
+            u = request.url
+            low = u.lower()
+            if "chart" in low and any(k in low for k in
+                                      ["chart.ashx", ".png", ".jpg", ".jpeg", "theme=", "charts"]):
+                captured_url["value"] = u
 
-        import tempfile
-        import os as _os
+        page.on("request", _on_request)
 
-        tmp_path = _os.path.join(tempfile.gettempdir(), download.suggested_filename)
-        download.save_as(tmp_path)
-
-        with open(tmp_path, "rb") as f:
-            img_bytes = f.read()
-
+        img_bytes = None
         try:
-            _os.remove(tmp_path)
-        except Exception:
-            pass
+            with page.expect_download(timeout=15000) as download_info:
+                self._safe_click(page, download_btn, "Download tugmasi")
+
+            download = download_info.value
+
+            import tempfile
+            import os as _os
+
+            tmp_path = _os.path.join(tempfile.gettempdir(), download.suggested_filename)
+            download.save_as(tmp_path)
+
+            with open(tmp_path, "rb") as f:
+                img_bytes = f.read()
+
+            try:
+                _os.remove(tmp_path)
+            except Exception:
+                pass
+        finally:
+            try:
+                page.remove_listener("request", _on_request)
+            except Exception:
+                pass
+
+        # URL orqali temani light ga majburlab, rasmni qayta yuklaymiz
+        src_url = captured_url["value"]
+        if src_url:
+            light_url = _force_light_url(src_url)
+            if light_url and light_url != src_url:
+                print(f"[Chart] Chart URL topildi, light ga o'zgartirildi:\n  {light_url}")
+                try:
+                    resp = page.request.get(light_url, timeout=15000)
+                    if resp.ok:
+                        body = resp.body()
+                        if body and len(body) > 1000:
+                            img_bytes = body
+                            print("[Chart] Light versiya URL orqali yuklandi")
+                        else:
+                            print("[Chart] Light URL javobi bo'sh, download rasmi ishlatiladi")
+                    else:
+                        print(f"[Chart] Light URL status: {resp.status}")
+                except Exception as e:
+                    print(f"[Chart] Light URL yuklashda xato: {e}")
+            else:
+                print("[Chart] Chart URL allaqachon light yoki temasi yo'q")
+        else:
+            print("[Chart] Chart URL ushlanmadi, download rasmi ishlatiladi")
+
+        if not img_bytes:
+            raise Exception("Download rasmi olinmadi")
 
         print(f"[Chart] Share->Download OK ({len(img_bytes)//1024} KB)")
 
