@@ -38,9 +38,13 @@ class BrowserManager:
 
         self.playwright = sync_playwright().start()
 
+        # DIQQAT: --single-process va --no-zygote flaglari olib tashlandi —
+        # ular ba'zi cloud muhitlarida (masalan Oracle Cloud) restart paytida
+        # brauzerni "ilib qo'yishi" (hang) mumkin edi.
         self.browser = self.playwright.chromium.launch(
             headless=True,
             chromium_sandbox=False,
+            timeout=30000,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -51,9 +55,7 @@ class BrowserManager:
                 "--disable-background-networking",
                 "--disable-background-timer-throttling",
                 "--disable-renderer-backgrounding",
-                "--disable-features=site-per-process",
-                "--single-process",
-                "--no-zygote",
+                "--disable-features=site-per-process,IsolateOrigins",
                 "--window-size=1600,900",
             ],
         )
@@ -74,15 +76,35 @@ class BrowserManager:
         print("[Browser] Chromium started")
 
     def stop(self):
+        # Avval barcha ochiq sahifalarni yopamiz — aks holda context.close()
+        # yoki browser.close() abadiy kutib qolishi (hang) mumkin
+        try:
+            if self.context:
+                for pg in list(self.context.pages):
+                    try:
+                        pg.close()
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[Browser] Pages yopishda xato: {e}")
+
         try:
             if self.context:
                 self.context.close()
+        except Exception as e:
+            print(f"[Browser] Context yopishda xato: {e}")
+
+        try:
             if self.browser:
                 self.browser.close()
+        except Exception as e:
+            print(f"[Browser] Browser yopishda xato: {e}")
+
+        try:
             if self.playwright:
                 self.playwright.stop()
         except Exception as e:
-            print(f"[Browser] Stop xato: {e}")
+            print(f"[Browser] Playwright to'xtatishda xato: {e}")
 
         self.context = None
         self.browser = None
@@ -93,6 +115,7 @@ class BrowserManager:
         """Brauzerni to'liq qayta ishga tushiradi."""
         print("[Browser] Restarting...")
         self.stop()
+        time.sleep(1)  # OS resurslarini bo'shatish uchun kichik pauza
         self.start()
         print("[Browser] Restarted")
 
@@ -100,7 +123,6 @@ class BrowserManager:
         if not self.browser:
             self.start()
 
-        # Agar browser/context ulanishi uzilgan bo'lsa, qayta tiklaymiz
         try:
             self.last_used = time.time()
             return self.context.new_page()
