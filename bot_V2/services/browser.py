@@ -59,10 +59,8 @@ class BrowserManager:
             print("[Browser] Server (headless) mode")
             print("[Browser] Chromium ishga tushirilmoqda...")
 
-            import concurrent.futures
-
-            def _launch():
-                return self.playwright.chromium.launch(
+            try:
+                self.browser = self.playwright.chromium.launch(
                     headless=True,
                     chromium_sandbox=False,
                     timeout=45000,
@@ -83,29 +81,22 @@ class BrowserManager:
                         "--no-default-browser-check",
                     ],
                 )
-
-            # Qattiq tashqi timeout — agar 60 soniyada javob bo'lmasa,
-            # aniq xato chiqaramiz (abadiy "osilib qolish" o'rniga)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_launch)
+            except Exception as e:
+                print(
+                    f"[Browser] ❌ Chromium ishga tushmadi: {e}\n"
+                    "   Ehtimoliy sabablar:\n"
+                    "   1) Xotira yetmayapti -> 'free -m' bilan tekshiring\n"
+                    "   2) Kutubxonalar o'rnatilmagan -> "
+                    "'python3 -m playwright install --with-deps chromium'\n"
+                    "   3) ARM protsessor muvofiqligi muammosi -> 'uname -m'\n"
+                    "   4) Osilib qolgan eski jarayon -> 'pkill -9 -f chrome'"
+                )
                 try:
-                    self.browser = future.result(timeout=60)
-                except concurrent.futures.TimeoutError:
-                    print(
-                        "[Browser] ❌ Chromium 60s ichida ishga tushmadi!\n"
-                        "   Ehtimoliy sabablar:\n"
-                        "   1) Xotira yetmayapti -> 'free -m' bilan tekshiring\n"
-                        "   2) Kutubxonalar o'rnatilmagan -> "
-                        "'python3 -m playwright install --with-deps chromium'\n"
-                        "   3) ARM protsessor muvofiqligi muammosi -> 'uname -m'\n"
-                        "   4) Osilib qolgan eski jarayon -> 'pkill -9 -f chrome'"
-                    )
-                    try:
-                        self.playwright.stop()
-                    except Exception:
-                        pass
-                    self.playwright = None
-                    raise RuntimeError("Chromium launch timeout (60s)")
+                    self.playwright.stop()
+                except Exception:
+                    pass
+                self.playwright = None
+                raise
 
             print("[Browser] Chromium ishga tushdi ✅")
 
