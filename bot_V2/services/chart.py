@@ -90,7 +90,7 @@ class ChartDownloader:
         page.wait_for_timeout(1500)
 
         try:
-            page.wait_for_load_state("networkidle", timeout=5000)
+            page.wait_for_load_state("networkidle", timeout=8000)
         except Exception:
             pass
 
@@ -126,7 +126,7 @@ class ChartDownloader:
         except Exception:
             pass
 
-        page.locator("canvas").first.wait_for(state="visible", timeout=15000)
+        page.locator("canvas").first.wait_for(state="visible", timeout=30000)
         page.wait_for_timeout(1200)
 
         try:
