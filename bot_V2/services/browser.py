@@ -1,22 +1,18 @@
-import os
-import platform
+"""
+services/browser.py
+Singleton Playwright browser manager (server/headless mode)
+"""
+
+import time
 import threading
-from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Page
 
-
-def _is_server_environment():
-    """Server (ekran yo'q) muhitmi tekshiradi."""
-    # Railway, Oracle Cloud yoki boshqa cloud/CI
-    if os.getenv("RAILWAY_ENVIRONMENT") is not None:
-        return True
-    if os.getenv("CLOUD_ENV") is not None or os.getenv("CI") is not None:
-        return True
-    # Linux'da $DISPLAY yo'q bo'lsa - ekran yo'q (server)
-    if platform.system() == "Linux" and not os.getenv("DISPLAY"):
-        return True
-    return False
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/137.0.0.0 Safari/537.36"
+)
 
 
 class BrowserManager:
@@ -31,101 +27,53 @@ class BrowserManager:
                 cls._instance.playwright = None
                 cls._instance.browser = None
                 cls._instance.context = None
+                cls._instance.last_used = 0
         return cls._instance
 
     def start(self):
-        if self.context:
+        if self.browser:
             return
+
+        print("[Browser] Server (headless) mode")
 
         self.playwright = sync_playwright().start()
 
-        server = _is_server_environment()
+        self.browser = self.playwright.chromium.launch(
+            headless=True,
+            chromium_sandbox=False,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-features=site-per-process",
+                "--single-process",
+                "--no-zygote",
+                "--window-size=1600,900",
+            ],
+        )
 
-        if server:
-            print("[Browser] Server (headless) mode")
+        self.context = self.browser.new_context(
+            viewport={"width": 1600, "height": 900},
+            user_agent=USER_AGENT,
+        )
 
-            self.browser = self.playwright.chromium.launch(
-                headless=True,
-                chromium_sandbox=False,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-background-networking",
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows",
-                    "--disable-renderer-backgrounding",
-                    "--disable-extensions",
-                    "--mute-audio",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    "--force-color-profile=srgb",
-                ],
-            )
+        self.context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+        """)
 
-            self.context = self.browser.new_context(
-                viewport={
-                    "width": 1600,
-                    "height": 1200,
-                },
-                accept_downloads=True,
-                locale="en-US",
-                timezone_id="UTC",
-                color_scheme="light",
-                device_scale_factor=1,
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/138.0.7204.169 Safari/537.36"
-                ),
-            )
+        self.context.set_default_timeout(30000)
+        self.last_used = time.time()
+        print("[Browser] Chromium started")
 
-            self.context.set_extra_http_headers({
-                "Accept-Language": "en-US,en;q=0.9"
-            })
-
-        else:
-            print("[Browser] Desktop (headed) mode")
-
-            profile = str(Path.home() / "playwright_profile")
-
-            self.context = self.playwright.chromium.launch_persistent_context(
-                user_data_dir=profile,
-                channel="chrome",
-                headless=False,
-                no_viewport=True,
-                accept_downloads=True,
-                color_scheme="light",
-                args=[
-                    "--start-maximized",
-                    "--disable-blink-features=AutomationControlled",
-                ],
-            )
-
-        self.context.set_default_timeout(60000)
-        self.context.set_default_navigation_timeout(60000)
-
-    def new_page(self):
-        if self.context is None:
-            self.start()
-
-        page = self.context.new_page()
-
-        page.set_viewport_size({
-            "width": 1600,
-            "height": 1200,
-        })
-
-        page.set_extra_http_headers({
-            "Accept-Language": "en-US,en;q=0.9"
-        })
-
-        return page
-
-    def close(self):
+    def stop(self):
         try:
             if self.context:
                 self.context.close()
@@ -133,12 +81,33 @@ class BrowserManager:
                 self.browser.close()
             if self.playwright:
                 self.playwright.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Browser] Stop xato: {e}")
 
         self.context = None
         self.browser = None
         self.playwright = None
+        print("[Browser] Closed")
+
+    def restart(self):
+        """Brauzerni to'liq qayta ishga tushiradi."""
+        print("[Browser] Restarting...")
+        self.stop()
+        self.start()
+        print("[Browser] Restarted")
+
+    def new_page(self) -> Page:
+        if not self.browser:
+            self.start()
+
+        # Agar browser/context ulanishi uzilgan bo'lsa, qayta tiklaymiz
+        try:
+            self.last_used = time.time()
+            return self.context.new_page()
+        except Exception as e:
+            print(f"[Browser] new_page xato, restart qilinmoqda: {e}")
+            self.restart()
+            return self.context.new_page()
 
 
 browser_manager = BrowserManager()
