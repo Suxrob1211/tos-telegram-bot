@@ -27,12 +27,18 @@ class ChartDownloader:
             print(f"[Chart] Cookie xato: {e}")
 
         try:
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.goto(url, wait_until="domcontentloaded", timeout=45000)
         except TimeoutError:
             print("[Chart] First timeout -> retry")
-            page.goto(url, wait_until="commit", timeout=30000)
+            page.goto(url, wait_until="commit", timeout=45000)
 
         page.set_viewport_size({"width": 1600, "height": 1200})
+
+        # Tarmoq so'rovlari (grafik ma'lumotlari) tugashini kutamiz
+        try:
+            page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            print("[Chart] networkidle kutish vaqti tugadi, davom etamiz")
 
         try:
             page.evaluate("""
@@ -57,7 +63,14 @@ class ChartDownloader:
         self._dismiss_consent(page)
         self._hide_popups(page)
 
-        page.locator("canvas").first.wait_for(state="visible", timeout=15000)
+        try:
+            page.locator("canvas").first.wait_for(state="visible", timeout=25000)
+        except TimeoutError:
+            print("[Chart] Canvas 25s da chiqmadi, sahifani qayta yuklab ko'ramiz")
+            page.reload(wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_load_state("networkidle", timeout=15000)
+            page.locator("canvas").first.wait_for(state="visible", timeout=20000)
+
         page.wait_for_timeout(2000)
 
         self._dismiss_consent(page)
