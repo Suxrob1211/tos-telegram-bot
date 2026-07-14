@@ -30,7 +30,6 @@ LIGHT_THEME_JS = """
     }
 """
 
-# Finviz theme toggle ikonkasiga qarab dark/light aniqlaydi
 IS_DARK_JS = """
     () => {
         try {
@@ -39,7 +38,7 @@ IS_DARK_JS = """
             );
             if (use) {
                 const href = use.getAttribute('href') || '';
-                if (href.includes('brightness1')) return true;   // dark (oy)
+                if (href.includes('brightness1')) return true;
                 if (href.includes('brightnessHigh') || href.toLowerCase().includes('sun')) return false;
             }
         } catch (e) {}
@@ -49,7 +48,6 @@ IS_DARK_JS = """
     }
 """
 
-# Finviz header theme toggle (dark<->light)
 THEME_TOGGLE_SELECTORS = [
     'div.rounded-full.w-10.h-5:has(use[href*="brightness"])',
     'div.rounded-full.w-10.h-5:has(svg)',
@@ -69,7 +67,6 @@ TOGGLE_SELECTORS = [
 
 
 def _force_light_url(url):
-    """Chart URL'idagi temani light ga majburlaydi."""
     if not url:
         return None
     try:
@@ -97,7 +94,6 @@ def _force_light_url(url):
 
 
 def _is_image_dark(img_bytes, threshold=90):
-    """Rasm fonining o'rtacha yorqinligini tekshiradi. Dark bo'lsa True."""
     try:
         from PIL import Image
         import io as _io
@@ -148,7 +144,6 @@ class ChartDownloader:
             print(f"[Chart] Route bloklashda xato: {e}")
 
     def _set_finviz_light_theme(self, page):
-        """Finviz header'dagi theme toggle'ni light ga o'tkazadi."""
         try:
             is_dark = page.evaluate(IS_DARK_JS)
             print(f"[Chart] Sahifa dark holatda: {is_dark}")
@@ -173,7 +168,6 @@ class ChartDownloader:
                     toggle.click(timeout=2500, force=True)
                     print(f"[Chart] Theme toggle bosildi: {sel}")
 
-                    # Toggle navigatsiya/reload qilishi mumkin - kutamiz
                     try:
                         page.wait_for_load_state("domcontentloaded", timeout=5000)
                     except Exception:
@@ -296,14 +290,9 @@ class ChartDownloader:
             print("[Chart] First timeout -> retry")
             page.goto(url, wait_until="commit", timeout=30000)
 
-        page.set_viewport_size({
-            "width": 1100,
-            "height": 850,
-        })
-
+        page.set_viewport_size({"width": 1100, "height": 850})
         page.wait_for_timeout(1500)
 
-        # Finviz'ning o'z theme toggle'ini light ga o'tkazamiz (asosiy yechim)
         self._set_finviz_light_theme(page)
 
         try:
@@ -325,7 +314,6 @@ class ChartDownloader:
 
         page.wait_for_timeout(1000)
 
-        # Reload'dan keyin yana tekshiramiz
         self._set_finviz_light_theme(page)
         self._force_light_all_frames(page)
 
@@ -429,7 +417,6 @@ class ChartDownloader:
             return img_bytes
 
     def _capture_via_share_download(self, page):
-        # Download oldidan yana theme light ekanini kafolatlaymiz
         self._set_finviz_light_theme(page)
 
         try:
@@ -456,7 +443,6 @@ class ChartDownloader:
         page.wait_for_timeout(1200)
 
         # --- DEBUG: ochilgan panel HTML'ini logga chiqaramiz ---
-        # Bu qatorlar to'g'ri selectorni topgach olib tashlanishi mumkin.
         try:
             panel_html = page.evaluate("""
                 () => {
@@ -496,7 +482,6 @@ class ChartDownloader:
         except Exception:
             pass
 
-        # Matnli va icon-only (SVG sprite) variantlarni ham qamrab oladigan selectorlar
         download_selectors = [
             'button:has-text("Download")',
             'a:has-text("Download")',
@@ -506,7 +491,6 @@ class ChartDownloader:
             '[aria-label*="download" i]',
             'a[href$=".png"]',
             'a[href*="chart.ashx"]',
-            # theme-toggle'dagi <use href="...brightness..."> kabi sprite icon holati
             'xpath=//*[local-name()="use" and contains(translate(@href,"DOWNLOAD","download"),"download")]'
             '/ancestor::*[self::button or self::a][1]',
             'xpath=//*[local-name()="svg" and contains(translate(@class,"DOWNLOAD","download"),"download")]'
@@ -528,7 +512,6 @@ class ChartDownloader:
         if download_btn is None:
             raise Exception("Download tugmasi topilmadi")
 
-        # Chart so'rovining URL'ini ushlab olamiz (zaxira uchun)
         captured_url = {"value": None}
 
         def _on_request(request):
@@ -579,7 +562,6 @@ class ChartDownloader:
             except Exception:
                 pass
 
-        # Zaxira: URL'da tema dark bo'lsa, light ga o'zgartirib qayta yuklaymiz
         src_url = captured_url["value"]
         if src_url and "theme=dark" in src_url.lower():
             light_url = _force_light_url(src_url)
@@ -598,7 +580,6 @@ class ChartDownloader:
         if not img_bytes:
             raise Exception("Download rasmi olinmadi")
 
-        # Yakuniy rasm dark bo'lsa xato beramiz -> retry / zaxira usul ishga tushadi
         if _is_image_dark(img_bytes):
             print("[Chart] ⚠️ Yuklangan rasm DARK holatda!")
             raise Exception("Rasm dark holatda yuklandi")
@@ -665,7 +646,6 @@ class ChartDownloader:
 
         print("[Chart] Zaxira usul: screenshot")
 
-        # Screenshot oldidan yana light ga o'tkazamiz
         self._set_finviz_light_theme(page)
 
         chart = self._find_chart(page)
