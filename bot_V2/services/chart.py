@@ -433,21 +433,25 @@ class ChartDownloader:
         except Exception:
             pass
 
+        # Aniq data-testid asosida (finviz'ning yangi chart toolbar'i shu konventsiyani ishlatadi)
         share_btn = page.locator(
+            '[data-testid="chart-toolbar-publish"], '
             'button:has-text("Share"), a:has-text("Share"), [class*="share"]:has-text("Share")'
         ).first
 
-        share_btn.wait_for(state="visible", timeout=8000)
+        # Chart widget sekin render bo'ladi - timeout oshirildi
+        share_btn.wait_for(state="visible", timeout=20000)
         self._safe_click(page, share_btn, "Share tugmasi")
 
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1500)
 
         # --- DEBUG: ochilgan panel HTML'ini logga chiqaramiz ---
         try:
             panel_html = page.evaluate("""
                 () => {
                     const candidates = document.querySelectorAll(
-                        '[class*="share" i], [class*="popup" i], [class*="Popup"], [role="dialog"]'
+                        '[class*="share" i], [class*="popup" i], [class*="Popup"], ' +
+                        '[role="dialog"], [data-testid*="share" i], [data-testid*="publish" i]'
                     );
                     return Array.from(candidates)
                         .map(el => el.outerHTML)
@@ -455,7 +459,7 @@ class ChartDownloader:
                 }
             """)
             if panel_html:
-                print("[Chart][DEBUG] Share panel HTML:\n", panel_html[:3000])
+                print("[Chart][DEBUG] Share panel HTML:\n", panel_html[:4000])
             else:
                 print("[Chart][DEBUG] Share panel HTML topilmadi (candidates bo'sh)")
         except Exception as e:
@@ -483,6 +487,8 @@ class ChartDownloader:
             pass
 
         download_selectors = [
+            '[data-testid*="download" i]',
+            '[data-testid*="export" i]',
             'button:has-text("Download")',
             'a:has-text("Download")',
             '[class*="download"]',
