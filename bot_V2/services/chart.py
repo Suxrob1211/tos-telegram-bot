@@ -453,13 +453,35 @@ class ChartDownloader:
         share_btn.wait_for(state="visible", timeout=8000)
         self._safe_click(page, share_btn, "Share tugmasi")
 
+        page.wait_for_timeout(1200)
+
+        # --- DEBUG: ochilgan panel HTML'ini logga chiqaramiz ---
+        # Bu qatorlar to'g'ri selectorni topgach olib tashlanishi mumkin.
+        try:
+            panel_html = page.evaluate("""
+                () => {
+                    const candidates = document.querySelectorAll(
+                        '[class*="share" i], [class*="popup" i], [class*="Popup"], [role="dialog"]'
+                    );
+                    return Array.from(candidates)
+                        .map(el => el.outerHTML)
+                        .join('\\n---\\n');
+                }
+            """)
+            if panel_html:
+                print("[Chart][DEBUG] Share panel HTML:\n", panel_html[:3000])
+            else:
+                print("[Chart][DEBUG] Share panel HTML topilmadi (candidates bo'sh)")
+        except Exception as e:
+            print(f"[Chart] Debug HTML olishda xato: {e}")
+
         try:
             page.wait_for_selector('text="Share Chart"', timeout=5000)
             print("[Chart] 'Share Chart' modal topildi")
         except Exception:
             print("[Chart] 'Share Chart' matni topilmadi, davom etamiz")
 
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(500)
 
         try:
             page.evaluate("""
@@ -474,12 +496,21 @@ class ChartDownloader:
         except Exception:
             pass
 
+        # Matnli va icon-only (SVG sprite) variantlarni ham qamrab oladigan selectorlar
         download_selectors = [
             'button:has-text("Download")',
             'a:has-text("Download")',
             '[class*="download"]',
             'button[title*="Download" i]',
             'a[download]',
+            '[aria-label*="download" i]',
+            'a[href$=".png"]',
+            'a[href*="chart.ashx"]',
+            # theme-toggle'dagi <use href="...brightness..."> kabi sprite icon holati
+            'xpath=//*[local-name()="use" and contains(translate(@href,"DOWNLOAD","download"),"download")]'
+            '/ancestor::*[self::button or self::a][1]',
+            'xpath=//*[local-name()="svg" and contains(translate(@class,"DOWNLOAD","download"),"download")]'
+            '/ancestor::*[self::button or self::a][1]',
         ]
 
         download_btn = None
