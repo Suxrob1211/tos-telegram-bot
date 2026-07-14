@@ -1,5 +1,4 @@
 import os
-import sys
 import threading
 from pathlib import Path
 
@@ -25,26 +24,6 @@ class BrowserManager:
 
         return cls._instance
 
-    def _is_server_env(self) -> bool:
-        """
-        Server (headless) muhitini aniqlaydi:
-        - Railway, Oracle Cloud, yoki har qanday Linux VPS/VM
-        - Yoki DISPLAY o'zgaruvchisi yo'q bo'lsa (GUI mavjud emas)
-        - Yoki FORCE_HEADLESS=1 qo'lda o'rnatilgan bo'lsa
-        Faqat Windows'da GUI (lokal test) rejimida ishlaydi.
-        """
-        if os.getenv("FORCE_HEADLESS") == "1":
-            return True
-
-        if os.getenv("FORCE_DESKTOP") == "1":
-            return False
-
-        if sys.platform.startswith("win"):
-            return False
-
-        # Linux/Mac server (Railway, Oracle Cloud, VPS va h.k.)
-        return True
-
     def start(self):
 
         if self.context:
@@ -52,19 +31,17 @@ class BrowserManager:
 
         self.playwright = sync_playwright().start()
 
-        server_mode = self._is_server_env()
+        railway = os.getenv("RAILWAY_ENVIRONMENT") is not None
 
-        if server_mode:
+        if railway:
 
-            print("[Browser] Server (headless) mode")
+            print("[Browser] Railway mode")
 
             self.browser = self.playwright.chromium.launch(
 
                 headless=True,
 
                 chromium_sandbox=False,
-
-                timeout=45000,
 
                 args=[
 
@@ -128,7 +105,7 @@ class BrowserManager:
 
         else:
 
-            print("[Browser] Windows (desktop) mode")
+            print("[Browser] Windows mode")
 
             profile = str(Path.home() / "playwright_profile")
 
@@ -164,12 +141,7 @@ class BrowserManager:
 
             self.start()
 
-        try:
-            page = self.context.new_page()
-        except Exception as e:
-            print(f"[Browser] new_page xato, qayta ishga tushirilmoqda: {e}")
-            self.restart()
-            page = self.context.new_page()
+        page = self.context.new_page()
 
         page.set_viewport_size({
 
@@ -188,18 +160,6 @@ class BrowserManager:
 
     def close(self):
 
-        # Avval ochiq sahifalarni yopamiz — aks holda close() abadiy
-        # kutib qolishi (hang) mumkin, ayniqsa server muhitida
-        try:
-            if self.context:
-                for pg in list(self.context.pages):
-                    try:
-                        pg.close()
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
         try:
 
             if self.context:
@@ -217,15 +177,6 @@ class BrowserManager:
         self.context = None
         self.browser = None
         self.playwright = None
-
-    def restart(self):
-        """Brauzerni to'liq qayta ishga tushiradi (crash/hang bo'lganda)."""
-        print("[Browser] Restarting...")
-        self.close()
-        import time
-        time.sleep(1)
-        self.start()
-        print("[Browser] Restarted")
 
 
 browser_manager = BrowserManager()
