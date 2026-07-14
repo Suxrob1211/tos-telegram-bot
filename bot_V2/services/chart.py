@@ -95,34 +95,6 @@ def _force_light_url(url):
             return f"{url}{sep}theme=light"
         return url
 
-
-def _is_image_dark(img_bytes, threshold=90):
-    """Rasm fonining o'rtacha yorqinligini tekshiradi. Dark bo'lsa True."""
-    try:
-        from PIL import Image
-        import io as _io
-
-        img = Image.open(_io.BytesIO(img_bytes)).convert("RGB")
-        w, h = img.size
-        points = [
-            (5, 5), (w - 5, 5), (5, h - 5), (w - 5, h - 5),
-            (w // 2, 3), (3, h // 2),
-        ]
-        total = 0
-        for x, y in points:
-            x = max(0, min(w - 1, x))
-            y = max(0, min(h - 1, y))
-            px = img.getpixel((x, y))
-            r, g, b = px[:3]
-            total += (r + g + b) / 3
-        avg = total / len(points)
-        print(f"[Chart] Rasm fon yorqinligi: {avg:.0f} (threshold={threshold})")
-        return avg < threshold
-    except Exception as e:
-        print(f"[Chart] Dark tekshirishda xato: {e}")
-        return False
-
-
 class ChartDownloader:
 
     def __init__(self):
@@ -567,14 +539,23 @@ class ChartDownloader:
         if not img_bytes:
             raise Exception("Download rasmi olinmadi")
 
-        # Yakuniy rasm dark bo'lsa xato beramiz -> retry / zaxira usul ishga tushadi
-        if _is_image_dark(img_bytes):
-            print("[Chart] ⚠️ Yuklangan rasm DARK holatda!")
-            raise Exception("Rasm dark holatda yuklandi")
+        from PIL import Image
+        import io
 
-        print(f"[Chart] Share->Download OK ({len(img_bytes)//1024} KB)")
+        # PNG buzilmaganini tekshiramiz
+        try:
+            Image.open(io.BytesIO(img_bytes)).verify()
+        except Exception as e:
+            raise Exception(f"PNG buzilgan: {e}")
 
-        img_bytes = self._scale_image(img_bytes, max_width=1400, max_height=800)
+        print(f"[Chart] Original Download PNG OK ({len(img_bytes)//1024} KB)")
+
+        # Share popupni yopamiz
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
 
         try:
             close_btn = page.locator(
@@ -584,8 +565,7 @@ class ChartDownloader:
                 close_btn.click(timeout=1000)
         except Exception:
             pass
-
-        return img_bytes
+        return img_bytes    
 
     def _find_chart(self, page):
         container_selectors = [
@@ -649,9 +629,7 @@ class ChartDownloader:
                         raise ValueError("Element too small")
 
                 img = chart.screenshot(type="png")
-                if _is_image_dark(img):
-                    print("[Chart] ⚠️ Screenshot ham dark, page screenshot ga o'tamiz")
-                    raise ValueError("Screenshot dark")
+                
                 print(f"[Chart] Chart screenshot OK ({len(img)//1024} KB)")
                 return img
             except Exception as e:
